@@ -25,6 +25,10 @@ function App() {
   const [epChoice, setEpChoice] = useState('');
   const [pendingFile, setPendingFile] = useState(null);
 
+  const [downloadingSplit, setDownloadingSplit] = useState(false);
+  const [splitProgress, setSplitProgress] = useState(0);
+
+
   const inputRef = useRef(null);
 
   const backend = 'https://swissreg-batch.onrender.com';
@@ -127,18 +131,57 @@ function App() {
   }
 
   async function downloadSplit() {
-    if (!job) return;
-    const url = canSplit
-      ? `${backend}/api/jobs/${job.jobId}/download-split?splitBy=${encodeURIComponent(splitBy)}`
-      : `${backend}/api/jobs/${job.jobId}/download-split`;
-    const r = await fetch(url);
-    if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
-    const blob = await r.blob();
-    const href = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = href; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
-    URL.revokeObjectURL(href);
+    if (!job || downloadingSplit) return;
+    setDownloadingSplit(true);
+    setSplitProgress(0);
+    setError('');
+
+    try {
+      // 1) Start the split task
+      const startRes = await fetch(`${backend}/api/jobs/${job.jobId}/split?splitBy=${encodeURIComponent(splitBy)}`, {
+        method: 'POST'
+      });
+      const startJson = await startRes.json();
+      if (!startRes.ok) throw new Error(startJson.error || 'Failed to start split');
+      const taskId = startJson.taskId;
+
+      // 2) Stream progress
+      await new Promise((resolve, reject) => {
+        const ev = new EventSource(`${backend}/api/split/${taskId}/stream`);
+        ev.onmessage = (m) => {
+          const { percent } = JSON.parse(m.data);
+          setSplitProgress(percent || 0);
+        };
+        ev.addEventListener('complete', async () => {
+          ev.close();
+          // 3) Download the finished ZIP
+          const r = await fetch(`${backend}/api/split/${taskId}/download`);
+          if (!r.ok) {
+            const j = await r.json().catch(()=>({}));
+            reject(new Error(j.error || 'Not ready'));
+            return;
+          }
+          const blob = await r.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
+          URL.revokeObjectURL(url);
+          resolve();
+        });
+        ev.onerror = () => {
+          ev.close();
+          reject(new Error('Progress stream error'));
+        };
+      });
+
+    } catch (e) {
+      setError(String(e.message || e));
+    } finally {
+      setDownloadingSplit(false);
+      setSplitProgress(0);
+    }
   }
+
 
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
@@ -246,9 +289,21 @@ function App() {
             </div>
           `}
 
-          <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${downloadSplit}>
-            Download split files
+          <button
+            class={"px-4 py-2 rounded-xl text-white " + (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
+            disabled=${downloadingSplit}
+            aria-busy=${downloadingSplit}
+            onClick=${downloadSplit}
+          >
+            ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
           </button>
+
+          ${downloadingSplit && html`
+            <div class="w-full bg-slate-200 rounded h-2 mt-2 overflow-hidden">
+              <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
+            </div>
+          `}
+
         </div>
       `}
 
