@@ -38,32 +38,44 @@ function App() {
   const backend = 'https://swissreg-batch.onrender.com';
 
   // Heuristic to pick the EP column from headers
-  function inferEpColumn(headers = []) {
-    const canonical = h => String(h || '').trim().toLowerCase();
-    const score = (h) => {
-      const s = canonical(h);
+  function inferEpColumn(headers = [], rows = []) {
+    const canon = h => String(h || '').trim().toLowerCase();
+
+    // Score header names; demote anything that looks like "application"
+    const scoreHeader = (h) => {
+      const s = canon(h);
       let pts = 0;
-      if (/\b(ep|publication|grant)\b/.test(s)) pts += 2;
+      if (s.startsWith('ep')) pts += 5;
+      if (/\bpublication\b/.test(s)) pts += 3;
+      if (/\bgrant\b/.test(s)) pts += 2;
       if (/\b(number|no|no\.|#)\b/.test(s)) pts += 1;
-      if (/^ep\b/.test(s)) pts += 3;
+      // if (/\bapplication\b/.test(s)) pts -= 4;   // <-- push "Application Number" down
       return pts;
     };
-    let best = '', bestScore = -1;
-    headers.forEach(h => {
-      const sc = score(h);
-      if (sc > bestScore) { best = h; bestScore = sc; }
-    });
-    return bestScore > 0 ? best : '';
+
+    // sort by score (desc)
+    const ordered = headers
+      .map(h => ({ h, score: scoreHeader(h) }))
+      .sort((a, b) => b.score - a.score);
+
+    // pick the first candidate that actually contains an EP in sample rows
+    const sample = rows.slice(0, 200);
+    for (const { h, score } of ordered) {
+      if (score <= 0) break; // nothing convincing left
+      const hits = sample.reduce((n, r) => n + (normalizeEP(r[h]) ? 1 : 0), 0);
+      if (hits > 0) return h;
+    }
+    return '';
   }
 
-  // Normalise EP publication number to "EPNNNNNNN" (7 digits)
-  // returns "" when it doesn't look valid
+  // Extract/normalize "EPNNNNNNN" even if there are spaces or kind codes (e.g. "EP 2305232 B1")
   function normalizeEP(v) {
-    const s = String(v || '').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
-    // Candidates like EP1234567 or EP0123456
-    const m = s.match(/^EP(\d{7})$/);
-    return m ? `EP${m[1]}` : '';
+    const s = String(v || '').toUpperCase();
+    const m = s.match(/\bEP\s*\d{7}\b/);      // find "EP 1234567" anywhere
+    if (!m) return '';
+    return m[0].replace(/\s+/g, '');         // "EP 1234567" -> "EP1234567"
   }
+
 
   // Parse first sheet, infer column, count usable EPs
   async function precountCases(file) {
@@ -80,20 +92,16 @@ function App() {
       if (!rows.length) { setCaseCount(0); return; }
 
       const headers = Object.keys(rows[0]);
-      const epCol = inferEpColumn(headers);
+      const epCol = inferEpColumn(headers, rows);   // <-- pass rows too
       setEpColDetected(epCol);
 
-      const cnt = rows.reduce((n, r) => {
-        const raw = epCol ? r[epCol] : '';
-        return n + (normalizeEP(raw) ? 1 : 0);
-      }, 0);
-
+      const cnt = rows.reduce((n, r) => n + (normalizeEP(epCol ? r[epCol] : '') ? 1 : 0), 0);
       setCaseCount(cnt);
     } catch {
-      // soft fail – just don’t show a count
       setCaseCount(null);
     }
-}
+  }
+
 
 
   function onDrop(e) {
