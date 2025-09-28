@@ -12,6 +12,8 @@ function App() {
   const [downloading, setDownloading] = useState(null);
   const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
+  const [splitBy, setSplitBy] = useState('address_name'); // 'client' | 'address_name' | 'address_email'
+
 
   // handle drag + drop
   function onDrop(e) {
@@ -48,7 +50,9 @@ function App() {
   // download results XLSX
   async function download(type) {
     if (!job) return;
-    const url = `${backend}/api/jobs/${job.jobId}/${type === 'split' ? 'download-split' : 'download'}`;
+    const url = type === 'split'
+      ? `${backend}/api/jobs/${job.jobId}/download-split?splitBy=${encodeURIComponent(splitBy)}`
+      : `${backend}/api/jobs/${job.jobId}/download`;
     setDownloading(type);
     try {
       const r = await fetch(url);
@@ -135,6 +139,22 @@ function App() {
     `}
 
     ${job && progress.done === progress.total && html`
+
+      <div class="mt-4 bg-white p-3 rounded-xl shadow flex flex-wrap items-center gap-3">
+        <label class="text-sm text-gray-700">Split by:</label>
+        <select
+          class="border rounded-lg px-3 py-2 text-sm"
+          value=${splitBy}
+          onChange=${e => setSplitBy(e.target.value)}
+        >
+          <option value="client">Client account name</option>
+          <option value="address_name">Sales order correspondence address - name (first line)</option>
+          <option value="address_email">Sales order correspondence address - email (last line or any email)</option>
+        </select>
+        <span class="text-xs text-gray-500">Used for the ZIP splitting and PoA generation grouping. Email falls back to name then client when missing.</span>
+      </div>
+
+
       <div class="flex flex-wrap gap-3 mt-4">
         <button
           class="px-4 py-2 rounded-xl bg-emerald-600 text-white disabled:opacity-60"
@@ -143,11 +163,11 @@ function App() {
         >
           ${downloading === 'results' ? 'Downloading…' : 'Download results'}
         </button>
-        <button
-          class="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-60"
+        <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-60"
           disabled=${downloading === 'split'}
           onClick=${() => download('split')}
         >
+
           ${downloading === 'split' ? 'Downloading…' : 'Download split files'}
         </button>
       </div>
