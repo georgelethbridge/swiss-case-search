@@ -10,6 +10,10 @@ function App() {
   const [confirmed, setConfirmed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
+  const [caseCount, setCaseCount] = useState(null);
+  const [epColDetected, setEpColDetected] = useState('');
+
+
   // Split-by controls (will be populated by backend)
   const [canSplit, setCanSplit] = useState(false);
   const [availableSplits, setAvailableSplits] = useState([]);
@@ -33,6 +37,65 @@ function App() {
 
   const backend = 'https://swissreg-batch.onrender.com';
 
+  // Heuristic to pick the EP column from headers
+  function inferEpColumn(headers = []) {
+    const canonical = h => String(h || '').trim().toLowerCase();
+    const score = (h) => {
+      const s = canonical(h);
+      let pts = 0;
+      if (/\b(ep|publication|grant)\b/.test(s)) pts += 2;
+      if (/\b(number|no|no\.|#)\b/.test(s)) pts += 1;
+      if (/^ep\b/.test(s)) pts += 3;
+      return pts;
+    };
+    let best = '', bestScore = -1;
+    headers.forEach(h => {
+      const sc = score(h);
+      if (sc > bestScore) { best = h; bestScore = sc; }
+    });
+    return bestScore > 0 ? best : '';
+  }
+
+  // Normalise EP publication number to "EPNNNNNNN" (7 digits)
+  // returns "" when it doesn't look valid
+  function normalizeEP(v) {
+    const s = String(v || '').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+    // Candidates like EP1234567 or EP0123456
+    const m = s.match(/^EP(\d{7})$/);
+    return m ? `EP${m[1]}` : '';
+  }
+
+  // Parse first sheet, infer column, count usable EPs
+  async function precountCases(file) {
+    try {
+      setCaseCount(null);
+      setEpColDetected('');
+
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const wsName = wb.SheetNames[0];
+      const ws = wb.Sheets[wsName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      if (!rows.length) { setCaseCount(0); return; }
+
+      const headers = Object.keys(rows[0]);
+      const epCol = inferEpColumn(headers);
+      setEpColDetected(epCol);
+
+      const cnt = rows.reduce((n, r) => {
+        const raw = epCol ? r[epCol] : '';
+        return n + (normalizeEP(raw) ? 1 : 0);
+      }, 0);
+
+      setCaseCount(cnt);
+    } catch {
+      // soft fail – just don’t show a count
+      setCaseCount(null);
+    }
+}
+
+
   function onDrop(e) {
     e.preventDefault();
     setDragOver(false);
@@ -48,6 +111,8 @@ function App() {
       setEpOptions([]);
       setEpChoice('');
       setDebugInfo(null);
+      precountCases(f);
+
     }
   }
 
@@ -207,12 +272,27 @@ function App() {
         onClick=${() => inputRef.current?.click()}
       >
         ${file
-          ? html`<div><strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB</div>`
-          : html`<div>Drag and drop spreadsheet here, or click to select</div>`}
+          ? html`
+              <div class="flex flex-col items-center gap-1">
+                <div>
+                  <strong>${file.name}</strong> – ${(file.size/1024/1024).toFixed(2)} MB
+                </div>
+                ${caseCount !== null && html`
+                  <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                    ${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected
+                    ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : ''}
+                  </div>
+                `}
+              </div>
+            `
+          : html`<div>Drag and drop spreadsheet here, or click to select</div>`
+        }
+
         <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
           const f = e.target.files[0];
           setFile(f || null);
           setPendingFile(f || null);
+          if (f) precountCases(f);
           setError('');
           setJob(null);
           setConfirmed(false);
@@ -267,53 +347,55 @@ function App() {
       `}
 
       ${job && progress.done === progress.total && html`
-        <div class="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
-            onClick=${downloadResults}
-          >
-            Download results
-          </button>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
+              onClick=${downloadResults}
+            >
+              Download results
+            </button>
 
-          ${canSplit && html`
-            <div class="flex items-center gap-2">
-              <label class="text-sm">Split by:</label>
-              <select
-                class="border rounded px-2 py-1"
-                value=${splitBy}
-                onChange=${e => setSplitBy(e.target.value)}
-              >
-                ${availableSplits.map(opt => html`
-                  <option value=${opt}>
-                    ${opt === 'client'
-                      ? 'Client account name'
-                      : opt === 'address_name'
-                        ? 'Sales order correspondence address – name'
-                        : 'Sales order correspondence address – email'}
-                  </option>
-                `)}
-              </select>
+            ${canSplit && html`
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-slate-700">Split by:</label>
+                <select
+                  class="border rounded px-2 py-1"
+                  value=${splitBy}
+                  onChange=${e => setSplitBy(e.target.value)}
+                >
+                  ${availableSplits.map(opt => html`
+                    <option value=${opt}>
+                      ${opt === 'client'
+                        ? 'Client account name'
+                        : opt === 'address_name'
+                          ? 'Sales order correspondence address – name'
+                          : 'Sales order correspondence address – email'}
+                    </option>
+                  `)}
+                </select>
 
-              <button
-                type="button"
-                class=${"px-4 py-2 rounded-xl text-white " +
-                        (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
-                disabled=${downloadingSplit}
-                aria-busy=${downloadingSplit}
-                onClick=${downloadSplit}
-              >
-                ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
-              </button>
-            </div>
-          `}
+                <button
+                  type="button"
+                  class=${"px-4 py-2 rounded-xl text-white " +
+                          (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
+                  disabled=${downloadingSplit}
+                  aria-busy=${downloadingSplit}
+                  onClick=${downloadSplit}
+                >
+                  ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
+                </button>
+              </div>
+            `}
+          </div>
 
           ${downloadingSplit && html`
-            <div class="w-full bg-slate-200 rounded h-2 mt-2 overflow-hidden">
+            <div class="w-full bg-slate-200 rounded h-2 overflow-hidden">
               <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
             </div>
           `}
         </div>
+
 
       `}
 
