@@ -6,7 +6,7 @@ import { createJob, getJob } from './queue.js';
 import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, APPEND_COLS } from './xlsxUtil.js';
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: ['https://www.georgelethbridge.com'] }));
 app.use(pino());
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 

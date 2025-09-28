@@ -7,7 +7,7 @@ function App() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const backend = (new URLSearchParams(location.search)).get('api') || 'https://YOUR-RENDER-BACKEND.onrender.com';
+  const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
 
   function onDrop(e) {
