@@ -64,33 +64,70 @@ function buildRequestXml(epUpper) {
 // Minimal ST.96 XML extraction using regex and string ops for performance
 // We extract only the fields needed by CH_REGISTER_INFO
 function extractFields(xml) {
-  // helper to pick the first match group or ''
+  // helper pickers - allow optional namespace prefix like pat:, com:
   const pick = (re) => (xml.match(re)?.[1] || '').trim();
-  const pickAll = (re) => Array.from(xml.matchAll(re)).map(m => (m[1] || '').trim());
 
-  // Legal status - pick latest by EventDate - we approximate by selecting the last occurrence if xml is sorted, otherwise we compute
-  const events = Array.from(xml.matchAll(/<StatusEventData[\s\S]*?<EventDate[^>]*>(.*?)<\/EventDate>[\s\S]*?<StatusEventCode>[\s\S]*?<KeyEventCode[^>]*>(.*?)<\/KeyEventCode>[\s\S]*?(?:<DetailedEventCode[^>]*>(.*?)<\/DetailedEventCode>)?[\s\S]*?<\/StatusEventData>/g))
-    .map(m => ({ date: m[1] || '', key: m[2] || '', det: m[3] || '' }));
+  // Latest legal status (sort by EventDate desc)
+  const reEvent = new RegExp(
+    `<(?:\\w+:)?StatusEventData[\\s\\S]*?` +
+      `<(?:\\w+:)?EventDate[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?EventDate>[\\s\\S]*?` +
+      `<(?:\\w+:)?StatusEventCode>[\\s\\S]*?` +
+        `<(?:\\w+:)?KeyEventCode[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?KeyEventCode>[\\s\\S]*?` +
+        `(?:<(?:\\w+:)?DetailedEventCode[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?DetailedEventCode>)?` +
+      `[\\s\\S]*?<\\/(?:\\w+:)?StatusEventData>`,
+    'gi'
+  );
+  const events = Array.from(xml.matchAll(reEvent)).map(m => ({
+    date: (m[1] || '').trim(),
+    key:  (m[2] || '').trim(),
+    det:  (m[3] || '').trim()
+  }));
   events.sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
   const last = events[0] || { date: '', key: '', det: '' };
   const statusCode = last.key && last.det ? `${last.key}/${last.det}` : (last.key || last.det || '');
 
   // Representative
-  const representative = pick(/<RegisteredPractitioner>[\s\S]*?<PersonFullName[^>]*>(.*?)<\/PersonFullName>[\s\S]*?<\/RegisteredPractitioner>/);
+  const representative = pick(
+    new RegExp(
+      `<(?:\\w+:)?RegisteredPractitioner>[\\s\\S]*?<(?:\\w+:)?PersonFullName[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?PersonFullName>[\\s\\S]*?<\\/(?:\\w+:)?RegisteredPractitioner>`,
+      'i'
+    )
+  );
 
   // Filing and Grant dates
-  const filingDate = pick(/<ApplicationIdentification>[\s\S]*?<FilingDate[^>]*>(.*?)<\/FilingDate>[\s\S]*?<\/ApplicationIdentification>/);
-  const grantDate  = pick(/<PatentGrantIdentification>[\s\S]*?<GrantDate[^>]*>(.*?)<\/GrantDate>[\s\S]*?<\/PatentGrantIdentification>/);
+  const filingDate = pick(
+    new RegExp(
+      `<(?:\\w+:)?ApplicationIdentification>[\\s\\S]*?<(?:\\w+:)?FilingDate[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?FilingDate>[\\s\\S]*?<\\/(?:\\w+:)?ApplicationIdentification>`,
+      'i'
+    )
+  );
+  const grantDate = pick(
+    new RegExp(
+      `<(?:\\w+:)?PatentGrantIdentification>[\\s\\S]*?<(?:\\w+:)?GrantDate[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?GrantDate>[\\s\\S]*?<\\/(?:\\w+:)?PatentGrantIdentification>`,
+      'i'
+    )
+  );
 
   // Owners - names and addresses
-  const ownerNames = pickAll(/<Owner>[\s\S]*?<PersonFullName[^>]*>(.*?)<\/PersonFullName>[\s\S]*?<\/Owner>/g);
-  const ownerAddresses = pickAll(/<PostalStructuredAddress>[\s\S]*?<AddressLineText[^>]*>(.*?)<\/AddressLineText>[\s\S]*?<\/PostalStructuredAddress>/g);
+  const ownerNames = Array.from(
+    xml.matchAll(/<(?:\w+:)?Owner[\s\S]*?<(?:\w+:)?PersonFullName[^>]*>([\s\S]*?)<\/(?:\w+:)?PersonFullName>[\s\S]*?<\/(?:\w+:)?Owner>/gi)
+  ).map(m => (m[1] || '').trim()).filter(Boolean).join(' | ');
 
-  return { statusCode, lastChangeDate: last.date, representative, filingDate, grantDate,
-    ownerNames: ownerNames.filter(Boolean).join(' | '),
-    ownerAddresses: ownerAddresses.filter(Boolean).join(' | ')
+  const ownerAddresses = Array.from(
+    xml.matchAll(/<(?:\w+:)?PostalStructuredAddress[\s\S]*?<(?:\w+:)?AddressLineText[^>]*>([\s\S]*?)<\/(?:\w+:)?AddressLineText>[\s\S]*?<\/(?:\w+:)?PostalStructuredAddress>/gi)
+  ).map(m => (m[1] || '').trim()).filter(Boolean).join(' | ');
+
+  return {
+    statusCode,
+    lastChangeDate: last.date || '',
+    representative,
+    filingDate,
+    grantDate,
+    ownerNames,
+    ownerAddresses
   };
 }
+
 
 async function callSwissreg(epUpper, attempt = 0) {
   const token = await getBearer();
@@ -132,8 +169,9 @@ async function callSwissreg(epUpper, attempt = 0) {
   // normalize whitespace in both the XML values and the requested EP
   const want = epUpper.replace(/\s+/g, '').toUpperCase();
   const pubs = Array.from(
-    xmlText.matchAll(/<PublicationNumber[^>]*>(.*?)<\/PublicationNumber>/gi)
+    xmlText.matchAll(/<(?:\w+:)?(?:PublicationNumber|PatentNumber)[^>]*>([^<]*)<\/(?:\w+:)?(?:PublicationNumber|PatentNumber)>/gi)
   ).map(m => (m[1] || '').replace(/\s+/g, '').toUpperCase());
+
 
   const exact = pubs.includes(want);
   if (!exact) throw new Error(`No exact PublicationNumber match for ${epUpper}`);
@@ -157,8 +195,9 @@ async function callSwissregWithDebug(epUpper) {
   const text = await res.text().catch(() => '');
   const want = String(epUpper).replace(/\s+/g, '').toUpperCase();
   const pubs = Array.from(
-    text.matchAll(/<PublicationNumber[^>]*>(.*?)<\/PublicationNumber>/gi)
+    text.matchAll(/<(?:\w+:)?(?:PublicationNumber|PatentNumber)[^>]*>([^<]*)<\/(?:\w+:)?(?:PublicationNumber|PatentNumber)>/gi)
   ).map(m => (m[1] || '').replace(/\s+/g, '').toUpperCase());
+
   const matched = pubs.includes(want);
 
   const data = matched && res.ok
