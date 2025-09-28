@@ -157,10 +157,21 @@ function extractFields(xml) {
   const ownerNames = ownerNamesArr.join(' | ');
   const ownerAddresses = ownerAddressesArr.join(' | ');
 
+  // --- Check for NotInForce data ---
+  const notInForceDate =
+    (xml.match(/<(?:\w+:)?NotInForceDate[^>]*>([\s\S]*?)<\/(?:\w+:)?NotInForceDate>/i)?.[1] || '').trim();
+  const reasonNotInForce =
+    (xml.match(/<(?:\w+:)?ReasonNotInForceCategory[^>]*>([\s\S]*?)<\/(?:\w+:)?ReasonNotInForceCategory>/i)?.[1] || '').trim();
+
+  // --- Replace status fields if NotInForce data exists ---
+  const effectiveStatus = notInForceDate
+    ? `Not in force: ${reasonNotInForce || 'Unknown reason'}`
+    : statusCode;
+  const effectiveDate = notInForceDate || (last.date || '');
 
   return {
-    statusCode,
-    lastChangeDate: last.date || '',
+    statusCode: effectiveStatus,
+    lastChangeDate: effectiveDate,
     representative,
     filingDate,
     grantDate,
