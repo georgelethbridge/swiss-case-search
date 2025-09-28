@@ -129,8 +129,15 @@ async function callSwissreg(epUpper, attempt = 0) {
 
   const xmlText = await res.text();
   // Sanity: verify exact publication number match exists
-  const exact = xmlText.toUpperCase().includes(`<PublicationNumber`.toUpperCase()) && xmlText.toUpperCase().includes(epUpper);
+  // normalize whitespace in both the XML values and the requested EP
+  const want = epUpper.replace(/\s+/g, '').toUpperCase();
+  const pubs = Array.from(
+    xmlText.matchAll(/<PublicationNumber[^>]*>(.*?)<\/PublicationNumber>/gi)
+  ).map(m => (m[1] || '').replace(/\s+/g, '').toUpperCase());
+
+  const exact = pubs.includes(want);
   if (!exact) throw new Error(`No exact PublicationNumber match for ${epUpper}`);
+
   return extractFields(xmlText);
 }
 
