@@ -141,4 +141,40 @@ async function callSwissreg(epUpper, attempt = 0) {
   return extractFields(xmlText);
 }
 
-export { callSwissreg };
+async function callSwissregWithDebug(epUpper) {
+  const token = await getBearer();
+  const xml = buildRequestXml(epUpper);
+  const res = await fetch(IPI_API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/xml',
+      'authorization': `Bearer ${token}`,
+      'accept': 'application/xml',
+    },
+    body: xml
+  });
+
+  const text = await res.text().catch(() => '');
+  const want = String(epUpper).replace(/\s+/g, '').toUpperCase();
+  const pubs = Array.from(
+    text.matchAll(/<PublicationNumber[^>]*>(.*?)<\/PublicationNumber>/gi)
+  ).map(m => (m[1] || '').replace(/\s+/g, '').toUpperCase());
+  const matched = pubs.includes(want);
+
+  const data = matched && res.ok
+    ? extractFields(text)
+    : { statusCode: `ERROR: ${!res.ok ? `HTTP ${res.status}` : `No exact PublicationNumber match for ${epUpper}`}`,
+        lastChangeDate: '', representative: '', filingDate: '', grantDate: '', ownerNames: '', ownerAddresses: '' };
+
+  // This is the key bit: return all info for the frontend to show
+  return {
+    data,
+    debug: {
+      requestXml: xml,
+      responseXml: text,
+      compare: { want, pubs, matched }
+    }
+  };
+}
+
+export { callSwissreg, callSwissregWithDebug };

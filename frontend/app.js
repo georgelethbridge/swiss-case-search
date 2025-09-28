@@ -82,7 +82,14 @@ function App() {
 
       ${error && html`<div class="text-red-700">${error}</div>`}
     </div>
+      ${job && progress.done === progress.total && html`
+      <details class="mt-6 bg-gray-100 p-4 rounded-xl">
+        <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
+        <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${JSON.stringify(job.debug, null, 2)}</pre>
+      </details>
+    `}
   </div>`
+
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));

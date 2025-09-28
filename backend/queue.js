@@ -1,5 +1,6 @@
 import Bottleneck from 'bottleneck';
-import { callSwissreg } from './ipiClient.js';
+import { callSwissreg, callSwissregWithDebug } from './ipiClient.js';
+
 
 const limiter = new Bottleneck({
   maxConcurrent: Number(process.env.RATE_MAX_CONCURRENT || 1),
@@ -27,7 +28,10 @@ async function processRow(job, idx, row) {
   const ep = String(row.__ep || '').trim().toUpperCase();
   try {
     if (!/^EP\d+$/.test(ep)) throw new Error(`Invalid EP format: ${ep}`);
-    const data = await callSwissreg(ep);
+    const { data, debug } = await callSwissregWithDebug(ep);
+    job.results[idx] = data;
+    job.debug = debug; // store debug info (only last one shown)
+
     job.results[idx] = {
       statusCode: data.statusCode,
       lastChangeDate: data.lastChangeDate,
