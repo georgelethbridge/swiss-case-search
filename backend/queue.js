@@ -28,23 +28,39 @@ async function processRow(job, idx, row) {
   const ep = String(row.__ep || '').trim().toUpperCase();
   try {
     if (!/^EP\d+$/.test(ep)) throw new Error(`Invalid EP format: ${ep}`);
-    const { data, debug } = await callSwissregWithDebug(ep);
-    job.results[idx] = data;
-    job.debug = debug; // store debug info (only last one shown)
 
-    job.results[idx] = {
-      statusCode: data.statusCode,
-      lastChangeDate: data.lastChangeDate,
-      representative: data.representative,
-      filingDate: data.filingDate,
-      grantDate: data.grantDate,
-      ownerNames: data.ownerNames,
-      ownerAddresses: data.ownerAddresses
-    };
+    if (job._debug) {
+      // when debug is enabled, call the debug variant and keep the _debug object on this row
+      const { data, debug } = await callSwissregWithDebug(ep);
+      job.results[idx] = {
+        statusCode: data.statusCode,
+        lastChangeDate: data.lastChangeDate,
+        representative: data.representative,
+        filingDate: data.filingDate,
+        grantDate: data.grantDate,
+        ownerNames: data.ownerNames,
+        ownerAddresses: data.ownerAddresses,
+        _debug: debug
+      };
+    } else {
+      // normal flow - no debug payload
+      const data = await callSwissreg(ep);
+      job.results[idx] = {
+        statusCode: data.statusCode,
+        lastChangeDate: data.lastChangeDate,
+        representative: data.representative,
+        filingDate: data.filingDate,
+        grantDate: data.grantDate,
+        ownerNames: data.ownerNames,
+        ownerAddresses: data.ownerAddresses
+      };
+    }
+
   } catch (e) {
     job.results[idx] = {
       statusCode: `ERROR: ${e.message || String(e)}`,
-      lastChangeDate: '', representative: '', filingDate: '', grantDate: '', ownerNames: '', ownerAddresses: ''
+      lastChangeDate: '', representative: '', filingDate: '', grantDate: '', ownerNames: '', ownerAddresses: '',
+      _debug: job._debug ? { error: e.message } : undefined
     };
     job.errors.push({ idx, ep, error: e.message || String(e) });
   } finally {
@@ -55,6 +71,7 @@ async function processRow(job, idx, row) {
     }
   }
 }
+
 
 function getJob(id) { return jobs.get(id) || null; }
 

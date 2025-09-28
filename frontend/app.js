@@ -9,6 +9,8 @@ function App() {
   const [confirmed, setConfirmed] = useState(false);
   const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
+  const [debugInfo, setDebugInfo] = useState(null);
+
 
   function onDrop(e) {
     e.preventDefault();
@@ -18,21 +20,30 @@ function App() {
 
   async function startJob() {
     setError('');
+    setDebugInfo(null);
     if (!file) return;
     const form = new FormData();
     form.append('file', file);
-    const r = await fetch(`${backend}/api/jobs`, { method: 'POST', body: form });
+
+    // IMPORTANT: ask backend to capture debug
+    const r = await fetch(`${backend}/api/jobs?debug=full`, { method: 'POST', body: form });
     const j = await r.json();
     if (!r.ok) { setError(j.error || 'Upload failed'); return; }
+
     setJob(j);
     setProgress({ done: 0, total: j.total });
+
     const ev = new EventSource(`${backend}/api/jobs/${j.jobId}/stream`);
-    ev.onmessage = (m) => {
-      const data = JSON.parse(m.data);
-      setProgress(data);
-    };
-    ev.addEventListener('complete', () => { ev.close(); });
+    ev.onmessage = (m) => setProgress(JSON.parse(m.data));
+    ev.addEventListener('complete', async () => {
+      ev.close();
+      // fetch results + per-row _debug
+      const res = await fetch(`${backend}/api/jobs/${j.jobId}/full`);
+      const full = await res.json();
+      setDebugInfo(full);
+    });
   }
+
 
   async function download() {
     if (!job) return;
@@ -83,10 +94,19 @@ function App() {
       ${error && html`<div class="text-red-700">${error}</div>`}
     </div>
       ${job && progress.done === progress.total && html`
-      <details class="mt-6 bg-gray-100 p-4 rounded-xl">
-        <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
-        <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${JSON.stringify(job.debug, null, 2)}</pre>
-      </details>
+        ${debugInfo && html`
+          <details class="mt-6 bg-gray-100 p-4 rounded-xl">
+            <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
+            <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${
+              JSON.stringify(
+                // show the first row’s _debug payload, or the whole object if missing
+                debugInfo.results?.[0]?._debug ?? debugInfo,
+                null, 2
+              )
+            }</pre>
+          </details>
+        `}
+
     `}
   </div>`
 
