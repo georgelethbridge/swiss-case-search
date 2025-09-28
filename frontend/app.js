@@ -7,9 +7,42 @@ function App() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const backend = 'https://swissreg-batch.onrender.com';
+  const backend = (new URLSearchParams(location.search)).get('api') || 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadingSplit, setDownloadingSplit] = useState(false);
+
+
+  function getFilenameFromDisposition(res, fallback) {
+    const cd = res.headers.get('content-disposition') || '';
+    const m = cd.match(/filename\*?=(?:UTF-8''|")?([^";\r\n]+)/i);
+    try {
+      return m ? decodeURIComponent(m[1].replace(/"/g, '')) : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  async function fetchAndDownload(url, fallbackName) {
+    const res = await fetch(url);
+    if (!res.ok) {
+      // Try to read JSON error from server
+      let msg = `Download failed (${res.status})`;
+      try {
+        const j = await res.json();
+        if (j && j.error) msg = j.error;
+      } catch {}
+      throw new Error(msg);
+    }
+    const blob = await res.blob();
+    const name = getFilenameFromDisposition(res, fallbackName);
+    const link = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = link; a.download = name; a.click();
+    URL.revokeObjectURL(link);
+  }
+
 
 
   function onDrop(e) {
@@ -45,16 +78,38 @@ function App() {
   }
 
 
+  // Regular results
   async function download() {
     if (!job) return;
-    const r = await fetch(`${backend}/api/jobs/${job.jobId}/download`);
-    if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `swissreg-results-${job.jobId}.xlsx`; a.click();
-    URL.revokeObjectURL(url);
+    try {
+      setError(''); setDownloading(true);
+      await fetchAndDownload(
+        `${backend}/api/jobs/${job.jobId}/download`,
+        `swissreg-results-${job.jobId}.xlsx`
+      );
+    } catch (e) {
+      setError(e.message || 'Download failed');
+    } finally {
+      setDownloading(false);
+    }
   }
+
+  // Split results (client zips + PoAs)
+  async function downloadSplit() {
+    if (!job) return;
+    try {
+      setError(''); setDownloadingSplit(true);
+      await fetchAndDownload(
+        `${backend}/api/jobs/${job.jobId}/download-split`,
+        `swissreg-split-${job.jobId}.zip`
+      );
+    } catch (e) {
+      setError(e.message || 'Split download failed');
+    } finally {
+      setDownloadingSplit(false);
+    }
+  }
+
 
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
@@ -89,18 +144,20 @@ function App() {
 
       ${job && progress.done === progress.total && html`
         <div class="flex gap-3">
-          <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>Download results</button>
-          <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${async () => {
-            const r = await fetch(`${backend}/api/jobs/${job.jobId}/download-split`);
-            if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
-            const blob = await r.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
-            URL.revokeObjectURL(url);
-          }}>Download split files</button>
+          <button
+            class="px-4 py-2 rounded-xl bg-emerald-600 text-white disabled:opacity-60"
+            disabled=${downloading}
+            onClick=${download}
+          >${downloading ? 'Downloading…' : 'Download results'}</button>
+
+          <button
+            class="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-60"
+            disabled=${downloadingSplit}
+            onClick=${downloadSplit}
+          >${downloadingSplit ? 'Preparing…' : 'Download split files'}</button>
         </div>
       `}
+
 
 
       ${error && html`<div class="text-red-700">${error}</div>`}

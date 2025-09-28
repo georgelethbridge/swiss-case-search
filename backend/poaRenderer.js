@@ -3,8 +3,7 @@ import puppeteer from 'puppeteer';
 
 let _template;
 
-/** Load the HTML template once */
-async function loadTemplate() {
+export async function loadTemplate() {
   if (!_template) {
     const url = new URL('./templates/poa.html', import.meta.url);
     _template = await fs.readFile(url, 'utf8');
@@ -19,25 +18,33 @@ function escapeHtml(s) {
     .replace(/>/g,'&gt;');
 }
 
-/** Replace tokens in the HTML */
-function fillTemplate(html, { name, address }) {
+export function fillTemplate(html, { name, address }) {
   return html
     .replaceAll('{applicant_name}', escapeHtml(name))
     .replaceAll('{applicant_address}', escapeHtml(address));
 }
 
-/** Render many HTML strings to PDF buffers reusing a single browser instance */
-async function renderManyToPdf(htmlList) {
-  const browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox'] });
-  const page = await browser.newPage();
-  const bufs = [];
-  for (const html of htmlList) {
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const pdf = await page.pdf({ format: 'A4', printBackground: true });
-    bufs.push(pdf);
-  }
-  await browser.close();
-  return bufs;
-}
+export async function renderManyToPdf(htmlList) {
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox','--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+    await page.emulateMediaType('screen'); // ensures printBackground renders consistently
 
-export { loadTemplate, fillTemplate, renderManyToPdf };
+    const bufs = [];
+    for (const html of htmlList) {
+      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        timeout: 60000
+      });
+      bufs.push(pdf);
+    }
+    return bufs;
+  } finally {
+    if (browser) await browser.close();
+  }
+}
