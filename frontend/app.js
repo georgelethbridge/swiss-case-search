@@ -88,10 +88,6 @@ function App() {
       `}
 
       ${job && progress.done === progress.total && html`
-        <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white w-fit" onClick=${download}>Download results</button>
-      `}
-
-      ${job && progress.done === progress.total && html`
         <div class="flex gap-3">
           <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>Download results</button>
           <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${async () => {
