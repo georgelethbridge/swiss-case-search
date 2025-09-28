@@ -1,104 +1,100 @@
+/* global React, ReactDOM, htm */
 const { useState, useRef } = React;
 const html = htm.bind(React.createElement);
 
 function App() {
   const [file, setFile] = useState(null);
-  const [caseCount, setCaseCount] = useState(0); 
   const [job, setJob] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
-  const [debugInfo, setDebugInfo] = useState(null);
-  const [showDebug, setShowDebug] = useState(false);
-  const [downloading, setDownloading] = useState(null);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const backend = 'https://swissreg-batch.onrender.com';
-  const inputRef = useRef(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  // Split-by controls (will be populated by backend)
   const [canSplit, setCanSplit] = useState(false);
   const [availableSplits, setAvailableSplits] = useState([]);
   const [splitBy, setSplitBy] = useState('address_name');
 
-    // helper: read xlsx and count rows from first sheet
-  async function countRowsInXlsx(file) {
-    try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const wsName = wb.SheetNames[0];
-      const ws = wb.Sheets[wsName];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  // Debug payload
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [showDebug, setShowDebug] = useState(false);
 
-      // Count only rows we would really process (Patent Number present)
-      const count = rows.filter(r => String(r['Patent Number'] || '').trim()).length;
-      return count;
-    } catch (e) {
-      console.error('XLSX parse failed:', e);
-      return 0;
-    }
-  }
+  // EP column selection (when backend can’t find it)
+  const [epNeeded, setEpNeeded] = useState(false);
+  const [epOptions, setEpOptions] = useState([]);
+  const [epChoice, setEpChoice] = useState('');
+  const [pendingFile, setPendingFile] = useState(null);
 
+  const inputRef = useRef(null);
 
+  const backend = 'https://swissreg-batch.onrender.com';
 
-  // handle drag + drop
   function onDrop(e) {
     e.preventDefault();
-    setIsDragOver(false);
+    setDragOver(false);
     const f = e.dataTransfer.files?.[0];
     if (f) {
       setFile(f);
-      countRowsInXlsx(f).then(setCaseCount).catch(() => setCaseCount(0));
+      setPendingFile(f);
+      // reset states for a fresh run
+      setError('');
+      setJob(null);
+      setConfirmed(false);
+      setEpNeeded(false);
+      setEpOptions([]);
+      setEpChoice('');
+      setDebugInfo(null);
     }
   }
 
-  async function onPick(e) {
-    const f = e.target.files?.[0];
-    if (f) {
-      setFile(f);
-      try { setCaseCount(await countRowsInXlsx(f)); } catch { setCaseCount(0); }
-    }
+  function onDrag(e, over) {
+    e.preventDefault();
+    setDragOver(over);
   }
 
-
-  // start job
   async function startJob(epColOverride) {
     setError('');
     setDebugInfo(null);
-    if (!file) return;
+    const f = pendingFile || file;
+    if (!f) return;
 
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', f);
 
-    // build URL with optional epCol
-    const url = new URL(`${backend}/api/jobs?debug=full`);
-    if (epColOverride) url.searchParams.set('epCol', epColOverride);
+    // if we already know the EP column, tell the backend
+    const qs = new URLSearchParams({ debug: 'full' });
+    if (epColOverride) qs.set('epCol', epColOverride);
 
-    const r = await fetch(url.toString(), { method: 'POST', body: form });
-    const j = await r.json().catch(()=> ({}));
+    const r = await fetch(`${backend}/api/jobs?` + qs.toString(), { method: 'POST', body: form });
 
-    if (r.status === 422 && j.error === 'no_ep_column' && Array.isArray(j.headers)) {
-      // simple fallback: prompt user to choose a header
-      const choice = window.prompt(
-        `I couldn't find the EP column.\n\nAvailable column names:\n\n${j.headers.join('\n')}\n\n` +
-        `Type the EXACT column name to use for EP publication number:`
-      );
-      if (choice && j.headers.includes(choice)) {
-        // retry with user-selected header
-        return startJob(choice);
-      } else {
-        setError('No EP column selected.');
+    if (r.status === 422) {
+      // Backend couldn't find the EP column. Show the dropdown.
+      let j = {};
+      try { j = await r.json(); } catch {}
+      if (j && j.error === 'no_ep_column' && Array.isArray(j.headers)) {
+        setEpNeeded(true);
+        setEpOptions(j.headers);
+        setEpChoice(''); // force user to pick
+        setError('');
         return;
       }
     }
 
-    if (!r.ok) { setError(j.error || 'Upload failed'); return; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      setError(j.error || 'Upload failed');
+      return;
+    }
 
+    // job accepted
     setJob(j);
+    setProgress({ done: 0, total: j.total || 0 });
     setCanSplit(!!j.canSplit);
     setAvailableSplits(Array.isArray(j.availableSplits) ? j.availableSplits : []);
     if (j.availableSplits && j.availableSplits.length) {
-      setSplitBy(j.availableSplits[0]); // default to first supported
+      setSplitBy(j.availableSplits[0]);
     }
-      
-    setProgress({ done: 0, total: j.total });
+    setConfirmed(true);
 
     const ev = new EventSource(`${backend}/api/jobs/${j.jobId}/stream`);
     ev.onmessage = (m) => setProgress(JSON.parse(m.data));
@@ -110,176 +106,164 @@ function App() {
     });
   }
 
-
-    // Reset
-  function resetAll() {
-    setFile(null);
-    setCaseCount(0);
-    setJob(null);
-    setProgress({ done: 0, total: 0 });
+  async function continueAfterChoosingEp() {
+    if (!epChoice) {
+      setError('Please select the EP column.');
+      return;
+    }
     setError('');
-    setConfirmed(false);
-    setDebugInfo(null);
-    setShowDebug(false);
-    setDownloading(null);
+    await startJob(epChoice);
   }
 
-
-  // download results XLSX
-  async function download(type) {
+  async function downloadResults() {
     if (!job) return;
-    const url = type === 'split'
+    const r = await fetch(`${backend}/api/jobs/${job.jobId}/download`);
+    if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `swissreg-results-${job.jobId}.xlsx`; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadSplit() {
+    if (!job) return;
+    const url = canSplit
       ? `${backend}/api/jobs/${job.jobId}/download-split?splitBy=${encodeURIComponent(splitBy)}`
-      : `${backend}/api/jobs/${job.jobId}/download`;
-    setDownloading(type);
-    try {
-      const r = await fetch(url);
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        setError(j.error || 'Not ready');
-        return;
-      }
-      const blob = await r.blob();
-      const dlUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = dlUrl;
-      a.download = type === 'split'
-        ? `swissreg-split-${job.jobId}.zip`
-        : `swissreg-results-${job.jobId}.xlsx`;
-      a.click();
-      URL.revokeObjectURL(dlUrl);
-    } finally {
-      setDownloading(null);
-    }
+      : `${backend}/api/jobs/${job.jobId}/download-split`;
+    const r = await fetch(url);
+    if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+    const blob = await r.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = href; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
+    URL.revokeObjectURL(href);
   }
 
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
   return html`
-    <div class="max-w-3xl mx-auto relative">
-      ${debugInfo && html`
-        <button
-          class="absolute top-0 right-0 px-3 py-1 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-700"
-          onClick=${() => setShowDebug(!showDebug)}
-        >
-          ${showDebug ? 'Hide Debugging' : 'Show Debugging'}
-        </button>
-      `}
+  <div class="max-w-3xl mx-auto">
+    <div class="flex items-start justify-between">
+      <h1 class="text-2xl font-bold mb-4">Swissreg Batch Tool</h1>
+      <button class="text-sm underline" onClick=${() => setShowDebug(s => !s)}>
+        ${showDebug ? 'Hide debugging' : 'Show debugging'}
+      </button>
+    </div>
+    <p class="mb-3 text-sm">
+      Upload an Excel (.xlsx) file with European Patent publication numbers. This tool will query Swissreg
+      and append results to your sheet. When complete, download the results or split per client.
+    </p>
 
-      <h1 class="text-3xl font-bold mb-3 text-center">Swissreg Batch Tool</h1>
-
-      <p class="text-sm text-gray-700 mb-6 leading-relaxed">
-        Upload an Excel (.xlsx) file with European Patent publication numbers.
-        This tool will query Swissreg and append results to your sheet. When complete, download the results or split per client.
-      </p>
-
+    <div class="grid gap-3">
       <div
-        class=${"p-6 rounded-2xl bg-white shadow dropzone text-center border-2 border-dashed transition-all " + (isDragOver ? "drag-over" : "border-gray-300")}
-        onDragOver=${e => { e.preventDefault(); }}
-        onDragEnter=${() => setIsDragOver(true)}
-        onDragLeave=${() => setIsDragOver(false)}
+        class=${"p-6 rounded-2xl bg-white shadow dropzone text-center border-2 " + (dragOver ? "border-blue-500" : "border-dashed border-slate-300")}
+        onDragOver=${(e)=>onDrag(e,true)}
+        onDragLeave=${(e)=>onDrag(e,false)}
         onDrop=${onDrop}
         onClick=${() => inputRef.current?.click()}
       >
         ${file
-          ? html`<div>
-              <strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB
-              <div class="text-sm text-gray-600 mt-1">
-                ${Number.isFinite(caseCount) ? `${caseCount} cases detected` : 'Counting…'}
-              </div>
-            </div>`
-          : html`<div class="text-gray-500">Drag and drop spreadsheet here, or click to select</div>`}
-        <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${onPick} />
+          ? html`<div><strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB</div>`
+          : html`<div>Drag and drop spreadsheet here, or click to select</div>`}
+        <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
+          const f = e.target.files[0];
+          setFile(f || null);
+          setPendingFile(f || null);
+          setError('');
+          setJob(null);
+          setConfirmed(false);
+          setEpNeeded(false);
+          setEpOptions([]);
+          setEpChoice('');
+          setDebugInfo(null);
+        }} />
       </div>
 
-      ${file && !confirmed && html`
-        <div class="flex justify-center gap-3 mt-4">
-          <button
-            class="px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all"
-            onClick=${() => { setConfirmed(true); startJob(); }}
-          >
-            Confirm and start
-          </button>
-          <button
-            class="px-5 py-2 rounded-xl bg-gray-100 text-gray-800 hover:bg-gray-200 transition-all"
-            onClick=${resetAll}
-          >
-            Reset
-          </button>
+      ${file && !confirmed && !epNeeded && html`
+        <div class="flex gap-3">
+          <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
+            setFile(null); setPendingFile(null); setError(''); setJob(null); setConfirmed(false);
+            setEpNeeded(false); setEpOptions([]); setEpChoice(''); setDebugInfo(null);
+          }}>Reset</button>
+        </div>
+      `}
+
+      ${epNeeded && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="font-semibold mb-2">Select the column that contains the EP publication number</div>
+          <div class="text-xs text-slate-600 mb-3">
+            We couldn't auto-detect the EP column. Choose it below and click Continue.
+          </div>
+          <div class="flex flex-wrap gap-3 items-center">
+            <select class="border rounded px-2 py-1" value=${epChoice} onChange=${e => setEpChoice(e.target.value)}>
+              <option value="">-- Select column --</option>
+              ${epOptions.map(h => html`<option value=${h}>${h}</option>`)}
+            </select>
+            <button
+              class=${"px-4 py-2 rounded-xl text-white " + (epChoice ? "bg-blue-600" : "bg-blue-300 cursor-not-allowed")}
+              disabled=${!epChoice}
+              onClick=${continueAfterChoosingEp}
+            >Continue</button>
+            <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
+              setEpNeeded(false); setEpOptions([]); setEpChoice('');
+            }}>Cancel</button>
+          </div>
         </div>
       `}
 
       ${job && html`
-        <div class="bg-white rounded-2xl p-4 shadow mt-6">
+        <div class="bg-white rounded-2xl p-4 shadow">
           <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
           <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
-            <div class="bg-blue-600 h-3 transition-all" style=${{ width: percent + '%' }}></div>
+            <div class="bg-blue-600 h-3" style=${{ width: percent + '%' }}></div>
           </div>
-          <div class="mt-2 text-sm">${percent}% complete</div>
+          <div class="mt-2 text-sm">${percent}%</div>
         </div>
       `}
 
-    ${job && progress.done === progress.total && html`
-      <div class="flex flex-wrap items-center gap-3">
-        <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>
-          Download results
-        </button>
+      ${job && progress.done === progress.total && html`
+        <div class="flex flex-wrap items-center gap-3">
+          <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${downloadResults}>
+            Download results
+          </button>
 
-        ${canSplit && html`
-          <div class="flex items-center gap-2">
-            <label class="text-sm">Split by:</label>
-            <select class="border rounded px-2 py-1"
-                    value=${splitBy}
-                    onChange=${e => setSplitBy(e.target.value)}>
-              ${availableSplits.map(opt => html`
-                <option value=${opt}>
-                  ${opt === 'client' ? 'Client account name'
-                    : opt === 'address_name' ? 'Sales order correspondence name'
-                    : 'Sales order correspondence email'}
-                </option>
-              `)}
-            </select>
-          </div>
-        `}
+          ${canSplit && html`
+            <div class="flex items-center gap-2">
+              <label class="text-sm">Split by:</label>
+              <select class="border rounded px-2 py-1" value=${splitBy} onChange=${e => setSplitBy(e.target.value)}>
+                ${availableSplits.map(opt => html`
+                  <option value=${opt}>
+                    ${opt === 'client'
+                      ? 'Client account name'
+                      : opt === 'address_name'
+                        ? 'Sales order correspondence address – name'
+                        : 'Sales order correspondence address – email'}
+                  </option>
+                `)}
+              </select>
+            </div>
+          `}
 
-        <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white"
-                onClick=${async () => {
-                  if (!job) return;
-                  // If we can’t split, omit splitBy entirely
-                  const url = canSplit
-                    ? `${backend}/api/jobs/${job.jobId}/download-split?splitBy=${encodeURIComponent(splitBy)}`
-                    : `${backend}/api/jobs/${job.jobId}/download-split`;
+          <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${downloadSplit}>
+            Download split files
+          </button>
+        </div>
+      `}
 
-                  const r = await fetch(url);
-                  if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
-                  const blob = await r.blob();
-                  const href = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = href; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
-                  URL.revokeObjectURL(href);
-                }}>
-          Download split files
-        </button>
-      </div>
-    `}
+      ${error && html`<div class="text-red-700">${error}</div>`}
 
-
-    ${error && html`<div class="text-red-700 mt-3">${error}</div>`}
-
-    ${showDebug && debugInfo && html`
-      <div class="mt-6 bg-gray-100 p-4 rounded-xl">
-        <h3 class="font-semibold mb-2">Debug Information</h3>
-        <pre class="text-xs whitespace-pre-wrap overflow-x-auto">${
-          JSON.stringify(
-            debugInfo.results?.[0]?._debug ?? debugInfo,
-            null,
-            2
-          )
-        }</pre>
-      </div>
-    `}
-  </div>
-  `;
+      ${showDebug && debugInfo && html`
+        <details class="mt-6 bg-gray-100 p-4 rounded-xl" open>
+          <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
+          <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${
+            JSON.stringify(debugInfo.results?.[0]?._debug ?? debugInfo, null, 2)
+          }</pre>
+        </details>
+      `}
+    </div>
+  </div>`;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
