@@ -14,7 +14,9 @@ function App() {
   const [isDragOver, setIsDragOver] = useState(false);
   const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
-  const [splitBy, setSplitBy] = useState('address_name'); // 'client' | 'address_name' | 'address_email'
+  const [canSplit, setCanSplit] = useState(false);
+  const [availableSplits, setAvailableSplits] = useState([]);
+  const [splitBy, setSplitBy] = useState('address_name');
 
     // helper: read xlsx and count rows from first sheet
   async function countRowsInXlsx(file) {
@@ -90,6 +92,12 @@ function App() {
     if (!r.ok) { setError(j.error || 'Upload failed'); return; }
 
     setJob(j);
+    setCanSplit(!!j.canSplit);
+    setAvailableSplits(Array.isArray(j.availableSplits) ? j.availableSplits : []);
+    if (j.availableSplits && j.availableSplits.length) {
+      setSplitBy(j.availableSplits[0]); // default to first supported
+    }
+      
     setProgress({ done: 0, total: j.total });
 
     const ev = new EventSource(`${backend}/api/jobs/${j.jobId}/stream`);
@@ -212,39 +220,49 @@ function App() {
       `}
 
     ${job && progress.done === progress.total && html`
-
-      <div class="mt-4 bg-white p-3 rounded-xl shadow flex flex-wrap items-center gap-3">
-        <label class="text-sm text-gray-700">Split by:</label>
-        <select
-          class="border rounded-lg px-3 py-2 text-sm"
-          value=${splitBy}
-          onChange=${e => setSplitBy(e.target.value)}
-        >
-          <option value="client">Client account name</option>
-          <option value="address_name">Sales order correspondence address - name (first line)</option>
-          <option value="address_email">Sales order correspondence address - email (last line or any email)</option>
-        </select>
-        <span class="text-xs text-gray-500">Used for the ZIP splitting and PoA generation grouping. Email falls back to name then client when missing.</span>
-      </div>
-
-
-      <div class="flex flex-wrap gap-3 mt-4">
-        <button
-          class="px-4 py-2 rounded-xl bg-emerald-600 text-white disabled:opacity-60"
-          disabled=${downloading === 'results'}
-          onClick=${() => download('results')}
-        >
-          ${downloading === 'results' ? 'Downloading…' : 'Download results'}
+      <div class="flex flex-wrap items-center gap-3">
+        <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>
+          Download results
         </button>
-        <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-60"
-          disabled=${downloading === 'split'}
-          onClick=${() => download('split')}
-        >
 
-          ${downloading === 'split' ? 'Downloading…' : 'Download split files'}
+        ${canSplit && html`
+          <div class="flex items-center gap-2">
+            <label class="text-sm">Split by:</label>
+            <select class="border rounded px-2 py-1"
+                    value=${splitBy}
+                    onChange=${e => setSplitBy(e.target.value)}>
+              ${availableSplits.map(opt => html`
+                <option value=${opt}>
+                  ${opt === 'client' ? 'Client account name'
+                    : opt === 'address_name' ? 'Sales order correspondence name'
+                    : 'Sales order correspondence email'}
+                </option>
+              `)}
+            </select>
+          </div>
+        `}
+
+        <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white"
+                onClick=${async () => {
+                  if (!job) return;
+                  // If we can’t split, omit splitBy entirely
+                  const url = canSplit
+                    ? `${backend}/api/jobs/${job.jobId}/download-split?splitBy=${encodeURIComponent(splitBy)}`
+                    : `${backend}/api/jobs/${job.jobId}/download-split`;
+
+                  const r = await fetch(url);
+                  if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+                  const blob = await r.blob();
+                  const href = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = href; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
+                  URL.revokeObjectURL(href);
+                }}>
+          Download split files
         </button>
       </div>
     `}
+
 
     ${error && html`<div class="text-red-700 mt-3">${error}</div>`}
 
