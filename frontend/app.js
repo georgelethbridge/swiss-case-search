@@ -268,14 +268,22 @@ function App() {
 
       ${job && progress.done === progress.total && html`
         <div class="flex flex-wrap items-center gap-3">
-          <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${downloadResults}>
+          <button
+            type="button"
+            class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
+            onClick=${downloadResults}
+          >
             Download results
           </button>
 
           ${canSplit && html`
             <div class="flex items-center gap-2">
               <label class="text-sm">Split by:</label>
-              <select class="border rounded px-2 py-1" value=${splitBy} onChange=${e => setSplitBy(e.target.value)}>
+              <select
+                class="border rounded px-2 py-1"
+                value=${splitBy}
+                onChange=${e => setSplitBy(e.target.value)}
+              >
                 ${availableSplits.map(opt => html`
                   <option value=${opt}>
                     ${opt === 'client'
@@ -286,25 +294,27 @@ function App() {
                   </option>
                 `)}
               </select>
+
+              <button
+                type="button"
+                class=${"px-4 py-2 rounded-xl text-white " +
+                        (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
+                disabled=${downloadingSplit}
+                aria-busy=${downloadingSplit}
+                onClick=${downloadSplit}
+              >
+                ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
+              </button>
             </div>
           `}
-
-          <button
-            class={"px-4 py-2 rounded-xl text-white " + (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
-            disabled=${downloadingSplit}
-            aria-busy=${downloadingSplit}
-            onClick=${downloadSplit}
-          >
-            ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
-          </button>
 
           ${downloadingSplit && html`
             <div class="w-full bg-slate-200 rounded h-2 mt-2 overflow-hidden">
               <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
             </div>
           `}
-
         </div>
+
       `}
 
       ${error && html`<div class="text-red-700">${error}</div>`}
