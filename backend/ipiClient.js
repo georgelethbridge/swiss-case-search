@@ -126,7 +126,7 @@ function extractFields(xml) {
     )
   );
 
-  // Owners - names and addresses
+  // --- Owners: collect per-owner name + address, address lines joined with comma
   const ownerBlocks = Array.from(
     xml.matchAll(/<(?:\w+:)?Owner\b[\s\S]*?<\/(?:\w+:)?Owner>/gi)
   );
@@ -144,17 +144,19 @@ function extractFields(xml) {
     ).map(m => (m[1] || '').trim()).filter(Boolean);
 
     const country =
-      (chunk.match(/<(?:\w+:)?CountryCode[^>]*>([\s\S]*?)<\/(?:\w+:)?CountryCode>/i)?.[1] || '').trim();
+      (chunk.match(/<(?:\w+:)?CountryCode[^>]*>([\s\\S]*?)<\/(?:\w+:)?CountryCode>/i)?.[1] || '').trim();
 
-    const address = [...addrLines, country].filter(Boolean).join(', '); // comma-separated
+    const address = [...addrLines, country].filter(Boolean).join(', '); // comma separated
 
     return { name, address };
   });
 
-  const ownerNames = owners.map(o => o.name).filter(Boolean).join(' | ');
-  const ownerAddresses = owners.map(o => o.address).filter(Boolean).join(' | ');
-  // NEW: interleaved "Name | Address | Name2 | Address2 | ..."
-  const ownersPaired = owners.flatMap(o => [o.name, o.address]).filter(Boolean).join(' | ');
+  // keep both joined strings and arrays
+  const ownerNamesArr = owners.map(o => o.name).filter(Boolean);
+  const ownerAddressesArr = owners.map(o => o.address).filter(Boolean);
+  const ownerNames = ownerNamesArr.join(' | ');
+  const ownerAddresses = ownerAddressesArr.join(' | ');
+
 
   return {
     statusCode,
@@ -164,7 +166,8 @@ function extractFields(xml) {
     grantDate,
     ownerNames,
     ownerAddresses,
-    ownersPaired
+    ownerNamesArr,
+    ownerAddressesArr
   };
 }
 

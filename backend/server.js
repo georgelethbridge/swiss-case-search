@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 import pino from 'pino-http';
 import { createJob, getJob } from './queue.js';
-import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, APPEND_COLS } from './xlsxUtil.js';
+import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, BASE_APPEND_COLS } from './xlsxUtil.js';
 
 const app = express();
 app.use(cors({ origin: ['https://www.georgelethbridge.com'] }));
@@ -29,7 +29,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
     job._wb = wb;
     job._debug = debug;            // NEW - remember this on the job
 
-    res.json({ jobId: job.id, total: job.total, appendColumns: APPEND_COLS, debug });
+    res.json({ jobId: job.id, total: job.total, appendColumns: BASE_APPEND_COLS, debug });
   } catch (e) {
     req.log.error(e, 'failed to create job');
     res.status(400).json({ error: e.message || String(e) });
