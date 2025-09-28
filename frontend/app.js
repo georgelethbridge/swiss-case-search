@@ -3,6 +3,7 @@ const html = htm.bind(React.createElement);
 
 function App() {
   const [file, setFile] = useState(null);
+  const [caseCount, setCaseCount] = useState(0); 
   const [job, setJob] = useState(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [error, setError] = useState('');
@@ -10,16 +11,39 @@ function App() {
   const [debugInfo, setDebugInfo] = useState(null);
   const [showDebug, setShowDebug] = useState(false);
   const [downloading, setDownloading] = useState(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
   const [splitBy, setSplitBy] = useState('address_name'); // 'client' | 'address_name' | 'address_email'
+
+    // helper: read xlsx and count rows from first sheet
+  async function countRowsInXlsx(file) {                    // NEW
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const wsName = wb.SheetNames[0];
+    const ws = wb.Sheets[wsName];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    // if you want to count only rows with a Patent Number, filter here:
+    // return rows.filter(r => String(r['Patent Number'] || '').trim()).length;
+    return rows.length;
+  }
 
 
   // handle drag + drop
   function onDrop(e) {
     e.preventDefault();
+    setIsDragOver(false);  
     const f = e.dataTransfer.files?.[0];
     if (f) setFile(f);
+  }
+
+    // when picked via click
+  async function onPick(e) {                                // NEW
+    const f = e.target.files?.[0];
+    if (f) {
+      setFile(f);
+      try { setCaseCount(await countRowsInXlsx(f)); } catch { setCaseCount(0); }
+    }
   }
 
   // start job
@@ -46,6 +70,20 @@ function App() {
       setDebugInfo(full);
     });
   }
+
+    // Reset
+  function resetAll() {
+    setFile(null);
+    setCaseCount(0);
+    setJob(null);
+    setProgress({ done: 0, total: 0 });
+    setError('');
+    setConfirmed(false);
+    setDebugInfo(null);
+    setShowDebug(false);
+    setDownloading(null);
+  }
+
 
   // download results XLSX
   async function download(type) {
@@ -78,65 +116,67 @@ function App() {
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
   return html`
-  <div class="max-w-3xl mx-auto relative">
-    <!-- Debug toggle button -->
-    ${debugInfo && html`
-      <button
-        class="absolute top-0 right-0 px-3 py-1 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-700"
-        onClick=${() => setShowDebug(!showDebug)}
-      >
-        ${showDebug ? 'Hide Debugging' : 'Show Debugging'}
-      </button>
-    `}
-
-    <h1 class="text-3xl font-bold mb-3 text-center">Swissreg Batch Tool</h1>
-
-    <p class="text-sm text-gray-700 mb-6 leading-relaxed">
-      Upload an Excel (.xlsx) file with European Patent publication numbers.  
-      This tool will automatically query <strong>Swissreg (IPI)</strong> for each case, 
-      retrieving ownership, representative, filing, grant, and legal status details.
-      <br/><br/>
-      When complete, you can download:
-      <ul class="list-disc ml-6 mt-1">
-        <li><strong>Results File:</strong> your original spreadsheet with new columns of data added.</li>
-        <li><strong>Split Files:</strong> one ZIP per client, each containing their spreadsheet and generated Power of Attorney PDFs.</li>
-      </ul>
-    </p>
-
-    <div
-      class="p-6 rounded-2xl bg-white shadow dropzone text-center border-2 border-dashed border-gray-300 hover:border-blue-500 transition-all duration-150"
-      onDragOver=${e => e.preventDefault()}
-      onDrop=${onDrop}
-      onDragEnter=${e => e.currentTarget.classList.add('border-blue-600', 'bg-blue-50')}
-      onDragLeave=${e => e.currentTarget.classList.remove('border-blue-600', 'bg-blue-50')}
-      onClick=${() => inputRef.current?.click()}
-    >
-      ${file
-        ? html`<div><strong>${file.name}</strong> - ${(file.size / 1024 / 1024).toFixed(2)} MB</div>`
-        : html`<div class="text-gray-500">Drag & drop spreadsheet here, or click to select</div>`}
-      <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e => setFile(e.target.files[0])} />
-    </div>
-
-    ${file && !confirmed && html`
-      <div class="flex justify-center mt-4">
+    <div class="max-w-3xl mx-auto relative">
+      ${debugInfo && html`
         <button
-          class="px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all"
-          onClick=${() => { setConfirmed(true); startJob(); }}
+          class="absolute top-0 right-0 px-3 py-1 text-sm bg-gray-800 text-white rounded-lg hover:bg-gray-700"
+          onClick=${() => setShowDebug(!showDebug)}
         >
-          Confirm and start
+          ${showDebug ? 'Hide Debugging' : 'Show Debugging'}
         </button>
-      </div>
-    `}
+      `}
 
-    ${job && html`
-      <div class="bg-white rounded-2xl p-4 shadow mt-6">
-        <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
-        <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
-          <div class="bg-blue-600 h-3 transition-all" style=${{ width: percent + '%' }}></div>
-        </div>
-        <div class="mt-2 text-sm">${percent}% complete</div>
+      <h1 class="text-3xl font-bold mb-3 text-center">Swissreg Batch Tool</h1>
+
+      <p class="text-sm text-gray-700 mb-6 leading-relaxed">
+        Upload an Excel (.xlsx) file with European Patent publication numbers.
+        This tool will query Swissreg and append results to your sheet. When complete, download the results or split per client.
+      </p>
+
+      <div
+        class=${"p-6 rounded-2xl bg-white shadow dropzone text-center border-2 border-dashed transition-all " + (isDragOver ? "drag-over" : "border-gray-300")}
+        onDragOver=${e => { e.preventDefault(); }}
+        onDragEnter=${() => setIsDragOver(true)}
+        onDragLeave=${() => setIsDragOver(false)}
+        onDrop=${onDrop}
+        onClick=${() => inputRef.current?.click()}
+      >
+        ${file
+          ? html`<div>
+                  <strong>${file.name}</strong>
+                  - ${(file.size / 1024 / 1024).toFixed(2)} MB
+                  ${caseCount ? html`<div class="text-sm text-gray-600 mt-1">${caseCount} cases detected</div>` : null}
+                </div>`
+          : html`<div class="text-gray-500">Drag and drop spreadsheet here, or click to select</div>`}
+        <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${onPick} />
       </div>
-    `}
+
+      ${file && !confirmed && html`
+        <div class="flex justify-center gap-3 mt-4">
+          <button
+            class="px-5 py-2 rounded-xl bg-blue-600 text-white hover:bg-blue-700 transition-all"
+            onClick=${() => { setConfirmed(true); startJob(); }}
+          >
+            Confirm and start
+          </button>
+          <button
+            class="px-5 py-2 rounded-xl bg-gray-100 text-gray-800 hover:bg-gray-200 transition-all"
+            onClick=${resetAll}
+          >
+            Reset
+          </button>
+        </div>
+      `}
+
+      ${job && html`
+        <div class="bg-white rounded-2xl p-4 shadow mt-6">
+          <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
+          <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
+            <div class="bg-blue-600 h-3 transition-all" style=${{ width: percent + '%' }}></div>
+          </div>
+          <div class="mt-2 text-sm">${percent}% complete</div>
+        </div>
+      `}
 
     ${job && progress.done === progress.total && html`
 
