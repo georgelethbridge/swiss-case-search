@@ -31,7 +31,8 @@ jobs:
         run: |
           mkdir build
           cp -R frontend/* build/
-          # add CNAME so Pages serves your custom domain
+          # optional cleanup: ensure no backend or node_modules are included
+          rm -rf build/backend build/node_modules
           echo "www.georgelethbridge.com" > build/CNAME
 
       - name: Upload artifact
