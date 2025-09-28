@@ -86,13 +86,31 @@ function extractFields(xml) {
   const last = events[0] || { date: '', key: '', det: '' };
   const statusCode = last.key && last.det ? `${last.key}/${last.det}` : (last.key || last.det || '');
 
-  // Representative
-  const representative = pick(
-    new RegExp(
-      `<(?:\\w+:)?RegisteredPractitioner>[\\s\\S]*?<(?:\\w+:)?PersonFullName[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?PersonFullName>[\\s\\S]*?<\\/(?:\\w+:)?RegisteredPractitioner>`,
-      'i'
-    )
+  // --- Representative (allow attributes on the opening tag)
+  let representative = '';
+
+  // primary: PersonFullName inside RegisteredPractitioner
+  let m = xml.match(
+    /<(?:\w+:)?RegisteredPractitioner(?:\s[^>]*)?>[\s\S]*?<(?:\w+:)?PersonFullName[^>]*>([\s\S]*?)<\/(?:\w+:)?PersonFullName>[\s\S]*?<\/(?:\w+:)?RegisteredPractitioner>/i
   );
+  if (m && m[1]) representative = m[1].trim();
+
+  // fallback: OrganizationNameText inside RegisteredPractitioner
+  if (!representative) {
+    m = xml.match(
+      /<(?:\w+:)?RegisteredPractitioner(?:\s[^>]*)?>[\s\S]*?<(?:\w+:)?OrganizationNameText[^>]*>([\s\S]*?)<\/(?:\w+:)?OrganizationNameText>[\s\S]*?<\/(?:\w+:)?RegisteredPractitioner>/i
+    );
+    if (m && m[1]) representative = m[1].trim();
+  }
+
+  // second fallback: any NameText inside RegisteredPractitioner
+  if (!representative) {
+    m = xml.match(
+      /<(?:\w+:)?RegisteredPractitioner(?:\s[^>]*)?>[\s\S]*?<(?:\w+:)?NameText[^>]*>([\s\S]*?)<\/(?:\w+:)?NameText>[\s\S]*?<\/(?:\w+:)?RegisteredPractitioner>/i
+    );
+    if (m && m[1]) representative = m[1].trim();
+  }
+
 
   // Filing and Grant dates
   const filingDate = pick(
@@ -109,13 +127,34 @@ function extractFields(xml) {
   );
 
   // Owners - names and addresses
-  const ownerNames = Array.from(
-    xml.matchAll(/<(?:\w+:)?Owner[\s\S]*?<(?:\w+:)?PersonFullName[^>]*>([\s\S]*?)<\/(?:\w+:)?PersonFullName>[\s\S]*?<\/(?:\w+:)?Owner>/gi)
-  ).map(m => (m[1] || '').trim()).filter(Boolean).join(' | ');
+  const ownerBlocks = Array.from(
+    xml.matchAll(/<(?:\w+:)?Owner\b[\s\S]*?<\/(?:\w+:)?Owner>/gi)
+  );
 
-  const ownerAddresses = Array.from(
-    xml.matchAll(/<(?:\w+:)?PostalStructuredAddress[\s\S]*?<(?:\w+:)?AddressLineText[^>]*>([\s\S]*?)<\/(?:\w+:)?AddressLineText>[\s\S]*?<\/(?:\w+:)?PostalStructuredAddress>/gi)
-  ).map(m => (m[1] || '').trim()).filter(Boolean).join(' | ');
+  const owners = ownerBlocks.map(b => {
+    const chunk = b[0];
+
+    const name =
+      (chunk.match(/<(?:\w+:)?PersonFullName[^>]*>([\s\S]*?)<\/(?:\w+:)?PersonFullName>/i)?.[1] || '').trim()
+      || (chunk.match(/<(?:\w+:)?OrganizationNameText[^>]*>([\s\S]*?)<\/(?:\w+:)?OrganizationNameText>/i)?.[1] || '').trim()
+      || (chunk.match(/<(?:\w+:)?NameText[^>]*>([\s\S]*?)<\/(?:\w+:)?NameText>/i)?.[1] || '').trim();
+
+    const addrLines = Array.from(
+      chunk.matchAll(/<(?:\w+:)?AddressLineText[^>]*>([\s\S]*?)<\/(?:\w+:)?AddressLineText>/gi)
+    ).map(m => (m[1] || '').trim()).filter(Boolean);
+
+    const country =
+      (chunk.match(/<(?:\w+:)?CountryCode[^>]*>([\s\S]*?)<\/(?:\w+:)?CountryCode>/i)?.[1] || '').trim();
+
+    const address = [...addrLines, country].filter(Boolean).join(', '); // comma-separated
+
+    return { name, address };
+  });
+
+  const ownerNames = owners.map(o => o.name).filter(Boolean).join(' | ');
+  const ownerAddresses = owners.map(o => o.address).filter(Boolean).join(' | ');
+  // NEW: interleaved "Name | Address | Name2 | Address2 | ..."
+  const ownersPaired = owners.flatMap(o => [o.name, o.address]).filter(Boolean).join(' | ');
 
   return {
     statusCode,
@@ -124,7 +163,8 @@ function extractFields(xml) {
     filingDate,
     grantDate,
     ownerNames,
-    ownerAddresses
+    ownerAddresses,
+    ownersPaired
   };
 }
 

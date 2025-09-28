@@ -4,7 +4,7 @@ const REQUIRED_COLS = [
   'Client Account Name','Client Reference','Client Default Correspondence Email','User Email','Sales Order Link','Sales Order Correspondence Address','Application Number','Patent Number','Filing Date','Applicant Names'
 ];
 
-const APPEND_COLS = ['StatusCode','LastChangeDate','Representative','FilingDate','GrantDate','OwnerNames','OwnerAddresses'];
+const APPEND_COLS = ['StatusCode','LastChangeDate','Representative','FilingDate','GrantDate','OwnerNames','OwnerAddresses','OwnersPaired'];
 
 function parseWorkbook(buf) {
   const wb = XLSX.read(buf, { type: 'buffer' });
@@ -40,7 +40,8 @@ function mapResult(res) {
     FilingDate: res.filingDate || '',
     GrantDate: res.grantDate || '',
     OwnerNames: res.ownerNames || '',
-    OwnerAddresses: res.ownerAddresses || ''
+    OwnerAddresses: res.ownerAddresses || '',
+    OwnersPaired: res.ownersPaired || ''
   };
 }
 

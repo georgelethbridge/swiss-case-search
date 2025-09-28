@@ -40,6 +40,7 @@ async function processRow(job, idx, row) {
         grantDate: data.grantDate,
         ownerNames: data.ownerNames,
         ownerAddresses: data.ownerAddresses,
+        ownersPaired: data.ownersPaired || '',
         _debug: debug
       };
     } else {
@@ -52,14 +53,15 @@ async function processRow(job, idx, row) {
         filingDate: data.filingDate,
         grantDate: data.grantDate,
         ownerNames: data.ownerNames,
-        ownerAddresses: data.ownerAddresses
+        ownerAddresses: data.ownerAddresses,
+        ownersPaired: data.ownersPaired || ''
       };
     }
 
   } catch (e) {
     job.results[idx] = {
       statusCode: `ERROR: ${e.message || String(e)}`,
-      lastChangeDate: '', representative: '', filingDate: '', grantDate: '', ownerNames: '', ownerAddresses: '',
+      lastChangeDate: '', representative: '', filingDate: '', grantDate: '', ownerNames: '', ownerAddresses: '', ownersPaired: '',
       _debug: job._debug ? { error: e.message } : undefined
     };
     job.errors.push({ idx, ep, error: e.message || String(e) });
