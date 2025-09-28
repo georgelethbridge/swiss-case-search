@@ -5,6 +5,7 @@ import pino from 'pino-http';
 import { createJob, getJob } from './queue.js';
 import JSZip from 'jszip';
 import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, buildSubsetWorkbook } from './xlsxUtil.js';
+import { loadTemplate, fillTemplate, renderManyToPdf } from './poaRenderer.js';
 
 const app = express();
 app.use(cors({ origin: ['https://www.georgelethbridge.com'] }));
@@ -84,17 +85,17 @@ app.get('/api/jobs/:id/full', (req, res) => {
   });
 });
 
-// Download split: one XLSX per unique first line of 'Sales Order Correspondence Address'
+// Download split: one ZIP per client containing the client XLSX and a ZIP of PoA PDFs
 app.get('/api/jobs/:id/download-split', async (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: 'Not found' });
   if (job.status !== 'finished') return res.status(409).json({ error: 'Job not finished' });
 
-  // group rows by first line of Sales Order Correspondence Address
   const firstLine = (s) => String(s || '').split(/\r?\n/)[0].trim() || 'Unknown';
   const keyField = 'Sales Order Correspondence Address';
-  const groups = new Map(); // key -> { rows: [], results: [] }
 
+  // Group rows/results by client (first line of the address)
+  const groups = new Map(); // key -> { rows: [], results: [] }
   job.rows.forEach((row, idx) => {
     const key = firstLine(row[keyField]);
     if (!groups.has(key)) groups.set(key, { rows: [], results: [] });
@@ -102,18 +103,59 @@ app.get('/api/jobs/:id/download-split', async (req, res) => {
     groups.get(key).results.push(job.results[idx] || {});
   });
 
-  // zip builder
-  const zip = new JSZip();
+  const zipRoot = new JSZip();
   const safe = (s) => s.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 80) || 'client';
 
-  // build a workbook per group and add to zip
-  for (const [client, bundle] of groups.entries()) {
+  // Load template once
+  const tpl = await loadTemplate();
+
+  for (const [clientName, bundle] of groups.entries()) {
+    // 1) Build per-client spreadsheet
     const wb = buildSubsetWorkbook(bundle.rows, bundle.results, 'Sheet1');
-    const buf = writeWorkbook(wb);
-    zip.file(`${safe(client)}.xlsx`, buf);
+    const xlsxBuf = writeWorkbook(wb);
+
+    // 2) Collect unique owners for this client across all rows
+    //    Use name+address key to deduplicate
+    const ownerMap = new Map(); // key -> { name, address }
+    bundle.results.forEach((res) => {
+      const names = Array.isArray(res.ownerNamesArr) ? res.ownerNamesArr : [];
+      const addrs = Array.isArray(res.ownerAddressesArr) ? res.ownerAddressesArr : [];
+      for (let i = 0; i < Math.max(names.length, addrs.length); i++) {
+        const name = (names[i] || '').trim();
+        const address = (addrs[i] || '').trim();
+        if (!name) continue; // require name
+        const k = `${name}||${address}`;
+        if (!ownerMap.has(k)) ownerMap.set(k, { name, address });
+      }
+    });
+
+    // 3) Fill HTML for each unique owner
+    const owners = Array.from(ownerMap.values());
+    const htmlList = owners.map(o => fillTemplate(tpl, { name: o.name, address: o.address }));
+
+    // 4) Render PDFs (single browser for all owners)
+    const pdfBuffers = await renderManyToPdf(htmlList);
+
+    // 5) Build inner PoA zip
+    const poaZip = new JSZip();
+    owners.forEach((o, idx) => {
+      const fname = `PoA - ${safe(o.name || 'Owner')}.pdf`;
+      poaZip.file(fname, pdfBuffers[idx]);
+    });
+    const poaZipBuf = await poaZip.generateAsync({ type: 'nodebuffer' });
+
+    // 6) Build per-client zip
+    const clientZip = new JSZip();
+    clientZip.file(`${safe(clientName)}.xlsx`, xlsxBuf);
+    clientZip.file(`PoA_PDFs_${safe(clientName)}.zip`, poaZipBuf);
+    const clientZipBuf = await clientZip.generateAsync({ type: 'nodebuffer' });
+
+    // 7) Add per-client zip to root zip
+    zipRoot.file(`${safe(clientName)}.zip`, clientZipBuf);
   }
 
-  const zipBuf = await zip.generateAsync({ type: 'nodebuffer' });
+  // 8) Stream the root zip
+  const zipBuf = await zipRoot.generateAsync({ type: 'nodebuffer' });
   res.setHeader('content-type', 'application/zip');
   res.setHeader('content-disposition', `attachment; filename="swissreg-split-${job.id}.zip"`);
   res.send(zipBuf);
