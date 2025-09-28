@@ -57,15 +57,36 @@ function App() {
 
 
   // start job
-  async function startJob() {
+  async function startJob(epColOverride) {
     setError('');
     setDebugInfo(null);
     if (!file) return;
+
     const form = new FormData();
     form.append('file', file);
 
-    const r = await fetch(`${backend}/api/jobs?debug=full`, { method: 'POST', body: form });
-    const j = await r.json();
+    // build URL with optional epCol
+    const url = new URL(`${backend}/api/jobs?debug=full`);
+    if (epColOverride) url.searchParams.set('epCol', epColOverride);
+
+    const r = await fetch(url.toString(), { method: 'POST', body: form });
+    const j = await r.json().catch(()=> ({}));
+
+    if (r.status === 422 && j.error === 'no_ep_column' && Array.isArray(j.headers)) {
+      // simple fallback: prompt user to choose a header
+      const choice = window.prompt(
+        `I couldn't find the EP column.\n\nAvailable column names:\n\n${j.headers.join('\n')}\n\n` +
+        `Type the EXACT column name to use for EP publication number:`
+      );
+      if (choice && j.headers.includes(choice)) {
+        // retry with user-selected header
+        return startJob(choice);
+      } else {
+        setError('No EP column selected.');
+        return;
+      }
+    }
+
     if (!r.ok) { setError(j.error || 'Upload failed'); return; }
 
     setJob(j);
@@ -80,6 +101,7 @@ function App() {
       setDebugInfo(full);
     });
   }
+
 
     // Reset
   function resetAll() {
