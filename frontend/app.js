@@ -17,34 +17,44 @@ function App() {
   const [splitBy, setSplitBy] = useState('address_name'); // 'client' | 'address_name' | 'address_email'
 
     // helper: read xlsx and count rows from first sheet
-  async function countRowsInXlsx(file) {                    // NEW
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
-    const wsName = wb.SheetNames[0];
-    const ws = wb.Sheets[wsName];
-    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
-    // if you want to count only rows with a Patent Number, filter here:
-    // return rows.filter(r => String(r['Patent Number'] || '').trim()).length;
-    return rows.length;
+  async function countRowsInXlsx(file) {
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const wsName = wb.SheetNames[0];
+      const ws = wb.Sheets[wsName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+      // Count only rows we would really process (Patent Number present)
+      const count = rows.filter(r => String(r['Patent Number'] || '').trim()).length;
+      return count;
+    } catch (e) {
+      console.error('XLSX parse failed:', e);
+      return 0;
+    }
   }
+
 
 
   // handle drag + drop
   function onDrop(e) {
     e.preventDefault();
-    setIsDragOver(false);  
+    setIsDragOver(false);
     const f = e.dataTransfer.files?.[0];
-    if (f) setFile(f);
+    if (f) {
+      setFile(f);
+      countRowsInXlsx(f).then(setCaseCount).catch(() => setCaseCount(0));
+    }
   }
 
-    // when picked via click
-  async function onPick(e) {                                // NEW
+  async function onPick(e) {
     const f = e.target.files?.[0];
     if (f) {
       setFile(f);
       try { setCaseCount(await countRowsInXlsx(f)); } catch { setCaseCount(0); }
     }
   }
+
 
   // start job
   async function startJob() {
@@ -143,10 +153,11 @@ function App() {
       >
         ${file
           ? html`<div>
-                  <strong>${file.name}</strong>
-                  - ${(file.size / 1024 / 1024).toFixed(2)} MB
-                  ${caseCount ? html`<div class="text-sm text-gray-600 mt-1">${caseCount} cases detected</div>` : null}
-                </div>`
+              <strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB
+              <div class="text-sm text-gray-600 mt-1">
+                ${Number.isFinite(caseCount) ? `${caseCount} cases detected` : 'Counting…'}
+              </div>
+            </div>`
           : html`<div class="text-gray-500">Drag and drop spreadsheet here, or click to select</div>`}
         <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${onPick} />
       </div>
