@@ -11,6 +11,8 @@ function App() {
   const [error, setError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+
 
   const backend = 'https://swissreg-batch.onrender.com';
   const inputRef = useRef(null);
@@ -159,11 +161,50 @@ function App() {
 
       ${job && progress.done === progress.total && html`
         <div class="flex gap-3">
-          <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>Download results</button>
-          <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${downloadSplit}>Download split files</button>
-          <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${clearAll}>Clear / Reset</button>
+          <button
+            class="px-4 py-2 rounded-xl bg-emerald-600 text-white disabled:opacity-60"
+            disabled=${downloading === 'results'}
+            onClick=${async () => {
+              setDownloading('results');
+              try {
+                const r = await fetch(`${backend}/api/jobs/${job.jobId}/download`);
+                if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `swissreg-results-${job.jobId}.xlsx`; a.click();
+                URL.revokeObjectURL(url);
+              } finally {
+                setDownloading(null);
+              }
+            }}
+          >
+            ${downloading === 'results' ? 'Downloading…' : 'Download results'}
+          </button>
+
+          <button
+            class="px-4 py-2 rounded-xl bg-indigo-600 text-white disabled:opacity-60"
+            disabled=${downloading === 'split'}
+            onClick=${async () => {
+              setDownloading('split');
+              try {
+                const r = await fetch(`${backend}/api/jobs/${job.jobId}/download-split`);
+                if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+                const blob = await r.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
+                URL.revokeObjectURL(url);
+              } finally {
+                setDownloading(null);
+              }
+            }}
+          >
+            ${downloading === 'split' ? 'Downloading…' : 'Download split files'}
+          </button>
         </div>
       `}
+
 
       ${error && html`<div class="text-red-700">${error}</div>`}
     </div>
