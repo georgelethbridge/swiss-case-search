@@ -1,0 +1,137 @@
+import fetch from 'node-fetch';
+import Pino from 'pino';
+
+const log = Pino({ name: 'ipiClient' });
+
+const env = (k, def) => process.env[k] ?? def;
+const IDP_TOKEN_URL = env('IDP_TOKEN_URL');
+const IPI_CLIENT_ID = env('IPI_CLIENT_ID', 'datadelivery-api-client');
+const IPI_API_URL   = env('IPI_API_URL');
+const IPI_USERNAME  = env('IPI_USERNAME');
+const IPI_PASSWORD  = env('IPI_PASSWORD');
+
+let tokenCache = { access: null, refresh: null, obtainedAt: 0, expiresIn: 0, refreshExpiresIn: 0 };
+
+function nowSec() { return Math.floor(Date.now() / 1000); }
+
+async function getBearer() {
+  const n = nowSec();
+  if (tokenCache.access && (n - tokenCache.obtainedAt) < tokenCache.expiresIn - 30) return tokenCache.access;
+  if (tokenCache.refresh && (n - tokenCache.obtainedAt) < tokenCache.refreshExpiresIn - 30) {
+    const body = new URLSearchParams({ grant_type: 'refresh_token', client_id: IPI_CLIENT_ID, refresh_token: tokenCache.refresh });
+    const r = await fetch(IDP_TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+    if (r.ok) return save(await r.json());
+    log.warn({ code: r.status }, 'refresh failed - falling back to password');
+  }
+  if (!IPI_USERNAME || !IPI_PASSWORD) throw new Error('Missing IPI credentials');
+  const body = new URLSearchParams({ grant_type: 'password', client_id: IPI_CLIENT_ID, username: IPI_USERNAME, password: IPI_PASSWORD });
+  const r = await fetch(IDP_TOKEN_URL, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
+  if (!r.ok) throw new Error(`Login failed ${r.status} ${await r.text()}`);
+  return save(await r.json());
+}
+
+function save(payload) {
+  tokenCache = {
+    access: payload.access_token,
+    refresh: payload.refresh_token,
+    obtainedAt: nowSec(),
+    expiresIn: Number(payload.expires_in) || 0,
+    refreshExpiresIn: Number(payload.refresh_expires_in || 30*24*3600)
+  };
+  return tokenCache.access;
+}
+
+function escapeXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildRequestXml(epUpper) {
+  const uuid = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+  const head = "<?xml version='1.0' encoding='UTF-8'?>";
+  const open = `<ApiRequest uuid="${uuid}" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:ige:schema:xsd:datadeliverycore-1.0.0" xmlns:pat="urn:ige:schema:xsd:datadeliverypatent-1.0.0">`;
+  const mid1 = '<Action type="PatentSearch">';
+  const mid2 = '<pat:PatentSearchRequest xmlns="urn:ige:schema:xsd:datadeliverycommon-1.0.0">';
+  const q = `<Query><Any>${escapeXml(epUpper)}</Any></Query>`;
+  const close = '</pat:PatentSearchRequest></Action></ApiRequest>';
+  return head + open + mid1 + mid2 + q + close;
+}
+
+// Minimal ST.96 XML extraction using regex and string ops for performance
+// We extract only the fields needed by CH_REGISTER_INFO
+function extractFields(xml) {
+  // helper to pick the first match group or ''
+  const pick = (re) => (xml.match(re)?.[1] || '').trim();
+  const pickAll = (re) => Array.from(xml.matchAll(re)).map(m => (m[1] || '').trim());
+
+  // Legal status - pick latest by EventDate - we approximate by selecting the last occurrence if xml is sorted, otherwise we compute
+  const events = Array.from(xml.matchAll(/<StatusEventData[\s\S]*?<EventDate[^>]*>(.*?)<\/EventDate>[\s\S]*?<StatusEventCode>[\s\S]*?<KeyEventCode[^>]*>(.*?)<\/KeyEventCode>[\s\S]*?(?:<DetailedEventCode[^>]*>(.*?)<\/DetailedEventCode>)?[\s\S]*?<\/StatusEventData>/g))
+    .map(m => ({ date: m[1] || '', key: m[2] || '', det: m[3] || '' }));
+  events.sort((a,b) => a.date < b.date ? 1 : (a.date > b.date ? -1 : 0));
+  const last = events[0] || { date: '', key: '', det: '' };
+  const statusCode = last.key && last.det ? `${last.key}/${last.det}` : (last.key || last.det || '');
+
+  // Representative
+  const representative = pick(/<RegisteredPractitioner>[\s\S]*?<PersonFullName[^>]*>(.*?)<\/PersonFullName>[\s\S]*?<\/RegisteredPractitioner>/);
+
+  // Filing and Grant dates
+  const filingDate = pick(/<ApplicationIdentification>[\s\S]*?<FilingDate[^>]*>(.*?)<\/FilingDate>[\s\S]*?<\/ApplicationIdentification>/);
+  const grantDate  = pick(/<PatentGrantIdentification>[\s\S]*?<GrantDate[^>]*>(.*?)<\/GrantDate>[\s\S]*?<\/PatentGrantIdentification>/);
+
+  // Owners - names and addresses
+  const ownerNames = pickAll(/<Owner>[\s\S]*?<PersonFullName[^>]*>(.*?)<\/PersonFullName>[\s\S]*?<\/Owner>/g);
+  const ownerAddresses = pickAll(/<PostalStructuredAddress>[\s\S]*?<AddressLineText[^>]*>(.*?)<\/AddressLineText>[\s\S]*?<\/PostalStructuredAddress>/g);
+
+  return { statusCode, lastChangeDate: last.date, representative, filingDate, grantDate,
+    ownerNames: ownerNames.filter(Boolean).join(' | '),
+    ownerAddresses: ownerAddresses.filter(Boolean).join(' | ')
+  };
+}
+
+async function callSwissreg(epUpper, attempt = 0) {
+  const token = await getBearer();
+  const xml = buildRequestXml(epUpper);
+  const res = await fetch(IPI_API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/xml',
+      'authorization': `Bearer ${token}`,
+      'accept': 'application/xml',
+      'accept-encoding': 'gzip',
+      'connection': 'keep-alive'
+    },
+    body: xml
+  });
+
+  if (res.status === 429) {
+    const retryAfter = Number(res.headers.get('retry-after') || '1');
+    const ms = (retryAfter * 1000) + Math.floor(Math.random() * 300);
+    log.warn({ retryAfter }, '429 received - backing off');
+    await new Promise(r => setTimeout(r, ms));
+    return callSwissreg(epUpper, attempt + 1);
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    // transient errors - backoff with jitter and retry up to MAX_RETRIES
+    if ([408, 409, 420, 500, 502, 503, 504].includes(res.status) && attempt < (Number(process.env.MAX_RETRIES || 5))) {
+      const backoff = Math.min(2000 * Math.pow(1.7, attempt), 15000) + Math.floor(Math.random()*400);
+      log.warn({ status: res.status, attempt, backoff }, 'transient error - retrying');
+      await new Promise(r => setTimeout(r, backoff));
+      return callSwissreg(epUpper, attempt + 1);
+    }
+    throw new Error(`IPI API error ${res.status}: ${text.slice(0, 300)}`);
+  }
+
+  const xmlText = await res.text();
+  // Sanity: verify exact publication number match exists
+  const exact = xmlText.toUpperCase().includes(`<PublicationNumber`.toUpperCase()) && xmlText.toUpperCase().includes(epUpper);
+  if (!exact) throw new Error(`No exact PublicationNumber match for ${epUpper}`);
+  return extractFields(xmlText);
+}
+
+export { callSwissreg };
