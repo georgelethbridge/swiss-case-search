@@ -163,15 +163,13 @@ function extractFields(xml) {
   const reasonNotInForce =
     (xml.match(/<(?:\w+:)?ReasonNotInForceCategory[^>]*>([\s\S]*?)<\/(?:\w+:)?ReasonNotInForceCategory>/i)?.[1] || '').trim();
 
-  // --- Replace status fields if NotInForce data exists ---
-  const effectiveStatus = notInForceDate
-    ? `Not in force: ${reasonNotInForce || 'Unknown reason'}`
-    : statusCode;
-  const effectiveDate = notInForceDate || (last.date || '');
+  // --- Output rule: if NotInForce exists, show it; otherwise leave both fields blank
+  const statusOut = notInForceDate ? (reasonNotInForce || 'Not in force') : '';
+  const dateOut   = notInForceDate ? notInForceDate : '';
 
   return {
-    statusCode: effectiveStatus,
-    lastChangeDate: effectiveDate,
+    statusCode: statusOut,       // shows ReasonNotInForceCategory or blank
+    lastChangeDate: dateOut,     // shows NotInForceDate or blank
     representative,
     filingDate,
     grantDate,
