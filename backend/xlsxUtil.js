@@ -1,10 +1,25 @@
 import XLSX from 'xlsx';
 
 const REQUIRED_COLS = [
-  'Client Account Name','Client Reference','Client Default Correspondence Email','User Email','Sales Order Link','Sales Order Correspondence Address','Application Number','Patent Number','Filing Date','Applicant Names'
+  'Client Account Name',
+  'Client Reference',
+  'Client Default Correspondence Email',
+  'User Email',
+  'Sales Order Link',
+  'Sales Order Correspondence Address',
+  'Application Number',
+  'Patent Number',
+  'Filing Date',
+  'Applicant Names'
 ];
 
-const BASE_APPEND_COLS = ['StatusCode','LastChangeDate','Representative','FilingDate','GrantDate'];
+const BASE_APPEND_COLS = [
+  'StatusCode',
+  'LastChangeDate',
+  'Representative',
+  'FilingDate',
+  'GrantDate'
+];
 
 function parseWorkbook(buf) {
   const wb = XLSX.read(buf, { type: 'buffer' });
@@ -12,26 +27,26 @@ function parseWorkbook(buf) {
   const ws = wb.Sheets[wsName];
   const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
 
-  // Validate headings minimally - tolerate extra columns and variant spacing
+  // minimal header validation
   const headers = Object.keys(rows[0] || {});
   const missing = REQUIRED_COLS.filter(h => !headers.includes(h));
   if (missing.length) {
     throw new Error(`Missing required column(s): ${missing.join(', ')}`);
   }
 
-  // Attach __ep for queue consumption
+  // attach __ep for queue consumption
   const augmented = rows.map(r => ({ ...r, __ep: r['Patent Number'] }));
   return { rows: augmented, headers, wsName, wb };
 }
 
 function appendResultsToWorkbook(wb, wsName, rows, results) {
-  // compute max owners seen across results
+  // max owners across all rows
   const maxOwners = results.reduce((m, r) => {
-    const n = Array.isArray(r?.ownerNamesArr) ? r.ownerNamesArr.length : 0;
+    const n = Array.isArray(r && r.ownerNamesArr) ? r.ownerNamesArr.length : 0;
     return Math.max(m, n);
   }, 0);
 
-  // build dynamic headers
+  // build headers: original + base append + dynamic owner pairs
   const originalHeaders = Object.keys(rows[0] || {});
   const dynamicOwnerHeaders = [];
   for (let i = 1; i <= maxOwners; i++) {
@@ -40,21 +55,24 @@ function appendResultsToWorkbook(wb, wsName, rows, results) {
   }
   const headers = [...originalHeaders, ...BASE_APPEND_COLS, ...dynamicOwnerHeaders];
 
-  // build row objects with dynamic owner pairs
+  // build data rows with dynamic owner pairs
   const combined = rows.map((r, i) => {
     const res = results[i] || {};
     const ownerNamesArr = Array.isArray(res.ownerNamesArr) ? res.ownerNamesArr : [];
     const ownerAddressesArr = Array.isArray(res.ownerAddressesArr) ? res.ownerAddressesArr : [];
-    const out = { ...r,
+
+    const out = {
+      ...r,
       StatusCode: res.statusCode || '',
       LastChangeDate: res.lastChangeDate || '',
       Representative: res.representative || '',
       FilingDate: res.filingDate || '',
       GrantDate: res.grantDate || ''
     };
+
     for (let k = 0; k < maxOwners; k++) {
-      out[`Owner${k+1}`] = ownerNamesArr[k] || '';
-      out[`Owner${k+1}Address`] = ownerAddressesArr[k] || '';
+      out[`Owner${k + 1}`] = ownerNamesArr[k] || '';
+      out[`Owner${k + 1}Address`] = ownerAddressesArr[k] || '';
     }
     return out;
   });
@@ -64,23 +82,8 @@ function appendResultsToWorkbook(wb, wsName, rows, results) {
   return wb;
 }
 
-
-// function mapResult(res) {
-//   if (!res) return Object.fromEntries(APPEND_COLS.map(h => [h, '']));
-//   return {
-//     StatusCode: res.statusCode || '',
-//     LastChangeDate: res.lastChangeDate || '',
-//     Representative: res.representative || '',
-//     FilingDate: res.filingDate || '',
-//     GrantDate: res.grantDate || '',
-//     OwnerNames: res.ownerNames || '',
-//     OwnerAddresses: res.ownerAddresses || '',
-//     OwnersPaired: res.ownersPaired || ''
-//   };
-// }
-
 function writeWorkbook(wb) {
   return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer', compression: true });
 }
 
-export { parseWorkbook, appendResultsToWorkbook, writeWorkbook, APPEND_COLS };
+export { parseWorkbook, appendResultsToWorkbook, writeWorkbook };

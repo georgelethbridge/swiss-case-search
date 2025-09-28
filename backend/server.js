@@ -3,7 +3,8 @@ import cors from 'cors';
 import multer from 'multer';
 import pino from 'pino-http';
 import { createJob, getJob } from './queue.js';
-import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, BASE_APPEND_COLS } from './xlsxUtil.js';
+// ⬇️ remove BASE_APPEND_COLS import
+import { parseWorkbook, appendResultsToWorkbook, writeWorkbook } from './xlsxUtil.js';
 
 const app = express();
 app.use(cors({ origin: ['https://www.georgelethbridge.com'] }));
@@ -18,7 +19,7 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // NEW - accept ?debug=true or ?debug=full
+    // accept ?debug=true or ?debug=full
     const debugFlag = String(req.query.debug || '').toLowerCase();
     const debug = debugFlag === 'true' || debugFlag === 'full';
 
@@ -27,9 +28,10 @@ app.post('/api/jobs', upload.single('file'), async (req, res) => {
     // cache workbook in job for later merge
     job._wsName = wsName;
     job._wb = wb;
-    job._debug = debug;            // NEW - remember this on the job
+    job._debug = debug;
 
-    res.json({ jobId: job.id, total: job.total, appendColumns: BASE_APPEND_COLS, debug });
+    // ⬇️ remove appendColumns
+    res.json({ jobId: job.id, total: job.total, debug });
   } catch (e) {
     req.log.error(e, 'failed to create job');
     res.status(400).json({ error: e.message || String(e) });
@@ -77,11 +79,10 @@ app.get('/api/jobs/:id/full', (req, res) => {
     total: job.total,
     done: job.done,
     status: job.status,
-    results: job.results, // will contain _debug objects per row when debug=true
+    results: job.results, // includes _debug when debug=true
     errors: job.errors
   });
 });
-
 
 // Download result
 app.get('/api/jobs/:id/download', async (req, res) => {
