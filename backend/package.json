@@ -8,6 +8,7 @@
     "postinstall": "npx puppeteer browsers install chrome"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^138.0.2",
     "bottleneck": "^2.19.5",
     "cors": "^2.8.5",
     "express": "^4.19.2",
@@ -16,7 +17,7 @@
     "node-fetch": "^3.3.2",
     "pino": "^9.4.0",
     "pino-http": "^9.0.0",
-    "puppeteer": "^23.11.1",
+    "puppeteer-core": "^24.22.3",
     "xlsx": "^0.18.5"
   }
 }

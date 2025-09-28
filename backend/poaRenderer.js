@@ -1,9 +1,11 @@
 import fs from 'fs/promises';
-import puppeteer from 'puppeteer';
+import chromium from '@sparticuz/chromium';
+import puppeteer from 'puppeteer-core';
 
 let _template;
 
-export async function loadTemplate() {
+/** Load the HTML template once */
+async function loadTemplate() {
   if (!_template) {
     const url = new URL('./templates/poa.html', import.meta.url);
     _template = await fs.readFile(url, 'utf8');
@@ -18,33 +20,35 @@ function escapeHtml(s) {
     .replace(/>/g,'&gt;');
 }
 
-export function fillTemplate(html, { name, address }) {
+/** Replace tokens in the HTML */
+function fillTemplate(html, { name, address }) {
   return html
     .replaceAll('{applicant_name}', escapeHtml(name))
     .replaceAll('{applicant_address}', escapeHtml(address));
 }
 
-export async function renderManyToPdf(htmlList) {
-  let browser;
-  try {
-    browser = await puppeteer.launch({
-      args: ['--no-sandbox','--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
-    await page.emulateMediaType('screen'); // ensures printBackground renders consistently
+/** Render many HTML strings to PDF buffers reusing a single browser instance */
+async function renderManyToPdf(htmlList) {
+  // Configure serverless Chrome for Render
+  const executablePath = await chromium.executablePath();
 
-    const bufs = [];
-    for (const html of htmlList) {
-      await page.setContent(html, { waitUntil: 'networkidle0', timeout: 60000 });
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        timeout: 60000
-      });
-      bufs.push(pdf);
-    }
-    return bufs;
-  } finally {
-    if (browser) await browser.close();
+  const browser = await puppeteer.launch({
+    headless: chromium.headless,               // true in serverless
+    executablePath,                            // provided by @sparticuz/chromium
+    args: chromium.args,                       // hardened args that work on serverless
+    defaultViewport: chromium.defaultViewport, // sane defaults
+    ignoreHTTPSErrors: true
+  });
+
+  const page = await browser.newPage();
+  const bufs = [];
+  for (const html of htmlList) {
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    const pdf = await page.pdf({ format: 'A4', printBackground: true });
+    bufs.push(pdf);
   }
+  await browser.close();
+  return bufs;
 }
+
+export { loadTemplate, fillTemplate, renderManyToPdf };
