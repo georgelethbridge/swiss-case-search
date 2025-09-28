@@ -79,11 +79,21 @@ function appendResultsToWorkbook(wb, wsName, rows, results) {
 
   const ws = XLSX.utils.json_to_sheet(combined, { header: headers });
   wb.Sheets[wsName] = ws;
+  if (!wb.SheetNames) wb.SheetNames = [];
+  if (!wb.SheetNames.includes(wsName)) wb.SheetNames.push(wsName);
   return wb;
+
 }
+
+function buildSubsetWorkbook(rows, results, sheetName = 'Sheet1') {
+  const wb = XLSX.utils.book_new();
+  return appendResultsToWorkbook(wb, sheetName, rows, results);
+}
+
 
 function writeWorkbook(wb) {
   return XLSX.write(wb, { bookType: 'xlsx', type: 'buffer', compression: true });
 }
 
-export { parseWorkbook, appendResultsToWorkbook, writeWorkbook };
+export { parseWorkbook, appendResultsToWorkbook, writeWorkbook, buildSubsetWorkbook };
+

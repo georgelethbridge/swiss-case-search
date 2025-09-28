@@ -91,6 +91,22 @@ function App() {
         <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white w-fit" onClick=${download}>Download results</button>
       `}
 
+      ${job && progress.done === progress.total && html`
+        <div class="flex gap-3">
+          <button class="px-4 py-2 rounded-xl bg-emerald-600 text-white" onClick=${download}>Download results</button>
+          <button class="px-4 py-2 rounded-xl bg-indigo-600 text-white" onClick=${async () => {
+            const r = await fetch(`${backend}/api/jobs/${job.jobId}/download-split`);
+            if (!r.ok) { const j = await r.json().catch(()=>({})); setError(j.error || 'Not ready'); return; }
+            const blob = await r.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `swissreg-split-${job.jobId}.zip`; a.click();
+            URL.revokeObjectURL(url);
+          }}>Download split files</button>
+        </div>
+      `}
+
+
       ${error && html`<div class="text-red-700">${error}</div>`}
     </div>
       ${job && progress.done === progress.total && html`

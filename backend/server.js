@@ -3,8 +3,8 @@ import cors from 'cors';
 import multer from 'multer';
 import pino from 'pino-http';
 import { createJob, getJob } from './queue.js';
-// ⬇️ remove BASE_APPEND_COLS import
-import { parseWorkbook, appendResultsToWorkbook, writeWorkbook } from './xlsxUtil.js';
+import JSZip from 'jszip';
+import { parseWorkbook, appendResultsToWorkbook, writeWorkbook, buildSubsetWorkbook } from './xlsxUtil.js';
 
 const app = express();
 app.use(cors({ origin: ['https://www.georgelethbridge.com'] }));
@@ -83,6 +83,42 @@ app.get('/api/jobs/:id/full', (req, res) => {
     errors: job.errors
   });
 });
+
+// Download split: one XLSX per unique first line of 'Sales Order Correspondence Address'
+app.get('/api/jobs/:id/download-split', async (req, res) => {
+  const job = getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Not found' });
+  if (job.status !== 'finished') return res.status(409).json({ error: 'Job not finished' });
+
+  // group rows by first line of Sales Order Correspondence Address
+  const firstLine = (s) => String(s || '').split(/\r?\n/)[0].trim() || 'Unknown';
+  const keyField = 'Sales Order Correspondence Address';
+  const groups = new Map(); // key -> { rows: [], results: [] }
+
+  job.rows.forEach((row, idx) => {
+    const key = firstLine(row[keyField]);
+    if (!groups.has(key)) groups.set(key, { rows: [], results: [] });
+    groups.get(key).rows.push(row);
+    groups.get(key).results.push(job.results[idx] || {});
+  });
+
+  // zip builder
+  const zip = new JSZip();
+  const safe = (s) => s.replace(/[^\w\-]+/g, '_').replace(/_+/g, '_').slice(0, 80) || 'client';
+
+  // build a workbook per group and add to zip
+  for (const [client, bundle] of groups.entries()) {
+    const wb = buildSubsetWorkbook(bundle.rows, bundle.results, 'Sheet1');
+    const buf = writeWorkbook(wb);
+    zip.file(`${safe(client)}.xlsx`, buf);
+  }
+
+  const zipBuf = await zip.generateAsync({ type: 'nodebuffer' });
+  res.setHeader('content-type', 'application/zip');
+  res.setHeader('content-disposition', `attachment; filename="swissreg-split-${job.id}.zip"`);
+  res.send(zipBuf);
+});
+
 
 // Download result
 app.get('/api/jobs/:id/download', async (req, res) => {
