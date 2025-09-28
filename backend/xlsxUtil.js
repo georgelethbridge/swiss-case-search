@@ -14,8 +14,8 @@ const REQUIRED_COLS = [
 ];
 
 const BASE_APPEND_COLS = [
-  'StatusCode',
-  'LastChangeDate',
+  'NotInForce?',
+  'NotInForceDate',
   'Representative',
   'FilingDate',
   'GrantDate'
@@ -63,8 +63,8 @@ function appendResultsToWorkbook(wb, wsName, rows, results) {
 
     const out = {
       ...r,
-      StatusCode: res.statusCode || '',
-      LastChangeDate: res.lastChangeDate || '',
+      'NotInForce?': res.statusCode || '',
+      NotInForceDate: res.lastChangeDate || '',
       Representative: res.representative || '',
       FilingDate: res.filingDate || '',
       GrantDate: res.grantDate || ''
