@@ -286,11 +286,12 @@ function App() {
                   <strong>${file.name}</strong> – ${(file.size/1024/1024).toFixed(2)} MB
                 </div>
                 ${caseCount !== null && html`
-                  <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
-                    ${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected
-                    ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : ''}
+                  <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full inline-flex gap-1">
+                    <span>${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected</span>
+                    ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : null}
                   </div>
                 `}
+
               </div>
             `
           : html`<div>Drag and drop spreadsheet here, or click to select</div>`
