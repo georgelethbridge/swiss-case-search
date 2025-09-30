@@ -2,68 +2,6 @@
 const { useState, useRef } = React;
 const html = htm.bind(React.createElement);
 
-// --- Minimal design system (drop in once) ---
-const Card = ({title, actions, children, subtle=false}) => html`
-  <section class=${"rounded-2xl p-6 shadow-sm " + (subtle ? "bg-slate-50 border border-slate-200" : "bg-white border border-slate-200")}>
-    ${title && html`
-      <header class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-semibold text-slate-900">${title}</h3>
-        ${actions || null}
-      </header>
-    `}
-    <div class="space-y-3">
-      ${children}
-    </div>
-  </section>
-`;
-
-const Button = ({kind="solid", color="slate", disabled, busy, onClick, children}) => {
-  const base = "inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium transition-colors shadow-sm";
-  const palette = {
-    emerald: disabled ? "bg-emerald-300 text-white" : "bg-emerald-600 hover:bg-emerald-700 text-white",
-    indigo:  disabled ? "bg-indigo-300 text-white"  : "bg-indigo-600 hover:bg-indigo-700 text-white",
-    slate:   disabled ? "bg-slate-400 text-white"   : "bg-slate-800 hover:bg-slate-700 text-white",
-    outline: "border border-slate-300 text-slate-700 bg-white hover:bg-slate-50"
-  };
-  const cls = kind === "outline" ? palette.outline : palette[color] || palette.slate;
-  return html`
-    <button type="button" class=${base + " " + cls}
-      disabled=${disabled} aria-busy=${busy} onClick=${onClick}>
-      ${children}
-    </button>
-  `;
-};
-
-const Field = ({label, hint, children}) => html`
-  <div class="space-y-1">
-    ${label && html`<label class="text-sm font-medium text-slate-800">${label}</label>`}
-    ${children}
-    ${hint && html`<p class="text-xs text-slate-500">${hint}</p>`}
-  </div>
-`;
-
-const Select = ({value, onChange, children}) => html`
-  <select class="w-full sm:w-auto border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-    value=${value} onChange=${onChange}>
-    ${children}
-  </select>
-`;
-
-const FilePicker = ({onChange, accept=".xlsx"}) => html`
-  <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 cursor-pointer">
-    <input type="file" accept=${accept} class="sr-only"
-      onChange=${e => onChange?.(e.target.files?.[0] || null)} />
-    <span class="text-sm font-medium text-slate-700">📄 Choose file</span>
-  </label>
-`;
-
-const ProgressBar = ({value}) => html`
-  <div class="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-    <div class="bg-emerald-600 h-2" style=${{ width: (value||0) + '%' }}></div>
-  </div>
-`;
-
-
 function App() {
   const [file, setFile] = useState(null);
   const [job, setJob] = useState(null);
@@ -385,233 +323,194 @@ function App() {
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
   return html`
-    <div class="max-w-4xl mx-auto space-y-6">
+  <div class="max-w-3xl mx-auto">
+    <div class="flex items-start justify-between">
+      <h1 class="text-2xl font-bold mb-4">Swissreg Batch Tool</h1>
+      <button class="text-sm underline" onClick=${() => setShowDebug(s => !s)}>
+        ${showDebug ? 'Hide debugging' : 'Show debugging'}
+      </button>
+    </div>
+    <p class="mb-3 text-sm">
+      Upload an Excel (.xlsx) file with European Patent publication numbers. This tool will query Swissreg
+      and append results to your sheet. When complete, download the results or split per client.
+    </p>
 
-      <!-- Page header -->
-      <div class="flex items-start justify-between">
-        <h1 class="text-2xl font-bold">Swissreg Batch Tool</h1>
-        <button class="text-sm underline" onClick=${() => setShowDebug(s => !s)}>
-          ${showDebug ? 'Hide debugging' : 'Show debugging'}
-        </button>
-      </div>
-      <p class="text-sm text-slate-600">
-        Upload an Excel (.xlsx) file with European Patent publication numbers. This tool will query Swissreg
-        and append results to your sheet. When complete, download the results or split per client.
-      </p>
-
-      <!-- Upload card -->
-      ${Card({
-        title: "Upload - EP publication numbers",
-        children: html`
-          <div
-            class=${"p-6 rounded-2xl bg-white shadow-sm border-2 text-center cursor-pointer " +
-                    (dragOver ? "border-blue-500" : "border-dashed border-slate-300")}
-            onDragOver=${(e)=>onDrag(e,true)}
-            onDragLeave=${(e)=>onDrag(e,false)}
-            onDrop=${onDrop}
-            onClick=${() => inputRef.current?.click()}
-          >
-            ${file
-              ? html`
-                  <div class="flex flex-col items-center gap-1">
-                    <div class="text-slate-800 font-medium">
-                      ${file.name} – ${(file.size/1024/1024).toFixed(2)} MB
-                    </div>
-                    ${caseCount !== null && html`
-                      <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full inline-flex gap-1">
-                        <span>${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected</span>
-                        ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : null}
-                      </div>
-                    `}
+    <div class="grid gap-3">
+      <div
+        class=${"p-6 rounded-2xl bg-white shadow dropzone text-center border-2 " + (dragOver ? "border-blue-500" : "border-dashed border-slate-300")}
+        onDragOver=${(e)=>onDrag(e,true)}
+        onDragLeave=${(e)=>onDrag(e,false)}
+        onDrop=${onDrop}
+        onClick=${() => inputRef.current?.click()}
+      >
+        ${file
+          ? html`
+              <div class="flex flex-col items-center gap-1">
+                <div>
+                  <strong>${file.name}</strong> – ${(file.size/1024/1024).toFixed(2)} MB
+                </div>
+                ${caseCount !== null && html`
+                  <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full inline-flex gap-1">
+                    <span>${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected</span>
+                    ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : null}
                   </div>
-                `
-              : html`<div class="text-slate-600">Drag and drop spreadsheet here, or click to select</div>`
-            }
+                `}
 
-            <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
-              const f = e.target.files[0];
-              setFile(f || null);
-              setPendingFile(f || null);
-              if (f) precountCases(f);
-              setError('');
-              setJob(null);
-              setConfirmed(false);
-              setEpNeeded(false);
-              setEpOptions([]);
-              setEpChoice('');
-              setDebugInfo(null);
-            }} />
-          </div>
+              </div>
+            `
+          : html`<div>Drag and drop spreadsheet here, or click to select</div>`
+        }
 
-          ${file && html`
-            <div class="flex flex-wrap gap-3 pt-3">
-              <button class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick=${() => startJob()}>
-                Confirm and start
-              </button>
-              <button class="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50"
-                      onClick=${() => {
-                        setFile(null); setPendingFile(null); setError(''); setJob(null); setConfirmed(false);
-                        setEpNeeded(false); setEpOptions([]); setEpChoice(''); setDebugInfo(null);
-                      }}>
-                Reset
-              </button>
-            </div>
-          `}
-        `
-      })}
+        <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
+          const f = e.target.files[0];
+          setFile(f || null);
+          setPendingFile(f || null);
+          if (f) precountCases(f);
+          setError('');
+          setJob(null);
+          setConfirmed(false);
+          setEpNeeded(false);
+          setEpOptions([]);
+          setEpChoice('');
+          setDebugInfo(null);
+        }} />
+      </div>
 
-      <!-- EP column chooser -->
-      ${epNeeded && Card({
-        title: "Select EP publication column",
-        children: html`
-          <p class="text-xs text-slate-600">
+      ${file && !confirmed && !epNeeded && html`
+        <div class="flex gap-3">
+          <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
+            setFile(null); setPendingFile(null); setError(''); setJob(null); setConfirmed(false);
+            setEpNeeded(false); setEpOptions([]); setEpChoice(''); setDebugInfo(null);
+          }}>Reset</button>
+        </div>
+      `}
+
+      ${epNeeded && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="font-semibold mb-2">Select the column that contains the EP publication number</div>
+          <div class="text-xs text-slate-600 mb-3">
             We couldn't auto-detect the EP column. Choose it below and click Continue.
-          </p>
+          </div>
           <div class="flex flex-wrap gap-3 items-center">
-            <select class="border rounded-xl px-3 py-2 text-sm bg-white"
-                    value=${epChoice}
-                    onChange=${e => setEpChoice(e.target.value)}>
+            <select class="border rounded px-2 py-1" value=${epChoice} onChange=${e => setEpChoice(e.target.value)}>
               <option value="">-- Select column --</option>
               ${epOptions.map(h => html`<option value=${h}>${h}</option>`)}
             </select>
-
             <button
-              class=${"px-4 py-2 rounded-xl text-white " + (epChoice ? "bg-blue-600 hover:bg-blue-700" : "bg-blue-300 cursor-not-allowed")}
+              class=${"px-4 py-2 rounded-xl text-white " + (epChoice ? "bg-blue-600" : "bg-blue-300 cursor-not-allowed")}
               disabled=${!epChoice}
               onClick=${continueAfterChoosingEp}
             >Continue</button>
-
-            <button class="px-4 py-2 rounded-xl border border-slate-300 bg-white hover:bg-slate-50"
-                    onClick=${() => { setEpNeeded(false); setEpOptions([]); setEpChoice(''); }}>
-              Cancel
-            </button>
+            <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
+              setEpNeeded(false); setEpOptions([]); setEpChoice('');
+            }}>Cancel</button>
           </div>
-        `
-      })}
+        </div>
+      `}
 
-      <!-- Progress -->
-      ${job && Card({
-        title: "Processing",
-        actions: html`<span class="text-sm text-slate-500">Job ${job.jobId || job}</span>`,
-        children: html`
+      ${job && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
           <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
             <div class="bg-blue-600 h-3" style=${{ width: percent + '%' }}></div>
           </div>
-          <div class="text-sm text-slate-600">${percent}%</div>
-        `
-      })}
-
-      <!-- Results + split + re-upload -->
-      ${job && progress.done === progress.total && html`
-        <section class="space-y-6">
-
-          ${Card({
-            title: "Results - ready to download",
-            children: html`
-              <div class="flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
-                  onClick=${downloadResults}
-                >
-                  ⬇️ Download results
-                </button>
-
-                <button
-                  type="button"
-                  class=${"flex items-center gap-2 px-4 py-2 rounded-xl font-medium text-white " +
-                          (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-800 hover:bg-slate-700")}
-                  disabled=${downloadingPoAsOnly}
-                  aria-busy=${downloadingPoAsOnly}
-                  onClick=${downloadPoAsOnly}
-                >
-                  ${downloadingPoAsOnly ? "⏳ Preparing PoAs…" : "📄 Download PoAs only"}
-                </button>
-              </div>
-
-              ${canSplit && html`
-                <div class="pt-2 grid sm:grid-cols-[auto_1fr_auto] items-center gap-3">
-                  <div class="text-sm text-slate-700 font-medium">Split by</div>
-                  <select
-                    class="border border-slate-300 rounded-xl px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                    value=${splitBy}
-                    onChange=${e => setSplitBy(e.target.value)}
-                  >
-                    ${availableSplits.map(opt => html`
-                      <option value=${opt}>
-                        ${opt === 'client'
-                          ? 'Client account name'
-                          : opt === 'address_name'
-                            ? 'Sales order address - name'
-                            : 'Sales order address - email'}
-                      </option>
-                    `)}
-                  </select>
-
-                  <button
-                    type="button"
-                    class=${"flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium " +
-                            (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600 hover:bg-indigo-700")}
-                    disabled=${downloadingSplit}
-                    aria-busy=${downloadingSplit}
-                    onClick=${downloadSplit}
-                  >
-                    ${downloadingSplit ? `⏳ Preparing… ${splitProgress}%` : '📦 Download split files'}
-                  </button>
-                </div>
-              `}
-
-              ${downloadingSplit && html`
-                <div class="pt-2 w-full bg-slate-200 rounded h-2 overflow-hidden">
-                  <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
-                </div>
-              `}
-            `
-          })}
-
-          ${Card({
-            title: "Re-upload edited results to generate PoAs",
-            children: html`
-              <p class="text-sm text-slate-600">
-                Uses OwnerN and OwnerNAddress columns only. If an owner appears with multiple addresses, separate PoAs will be created.
-              </p>
-              <div class="flex flex-col sm:flex-row sm:items-center gap-3">
-                <label class="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 hover:bg-slate-100 cursor-pointer">
-                  <input
-                    type="file"
-                    accept=".xlsx"
-                    class="sr-only"
-                    onChange=${e => {
-                      const f = e.target.files?.[0];
-                      setPoaSheetFile(f || null);
-                    }}
-                  />
-                  <span class="text-sm font-medium text-slate-700">📄 Choose .xlsx file</span>
-                </label>
-
-                ${poaSheetFile && html`
-                  <span class="text-sm text-slate-500 truncate max-w-[320px] italic">
-                    ${poaSheetFile.name}
-                  </span>
-                `}
-
-                <button
-                  type="button"
-                  class=${"flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium " +
-                          (downloadingPoAsFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-800 hover:bg-slate-700")}
-                  disabled=${downloadingPoAsFromSheet || !poaSheetFile}
-                  aria-busy=${downloadingPoAsFromSheet}
-                  onClick=${downloadPoAsFromSheet}
-                >
-                  ${downloadingPoAsFromSheet ? "⏳ Preparing PoAs…" : "📄 Download PoAs from sheet"}
-                </button>
-              </div>
-            `
-          })}
-
-        </section>
+          <div class="mt-2 text-sm">${percent + '%'}</div>
+        </div>
       `}
+
+      ${job && progress.done === progress.total && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
+              onClick=${downloadResults}
+            >
+              Download results
+            </button>
+
+            <button
+              type="button"
+              class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled=${downloadingPoAsOnly}
+              aria-busy=${downloadingPoAsOnly}
+              onClick=${downloadPoAsOnly}
+            >
+              ${downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
+            </button>
+
+
+
+            ${canSplit && html`
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-slate-700">Split by:</label>
+                <select
+                  class="border rounded px-2 py-1"
+                  value=${splitBy}
+                  onChange=${e => setSplitBy(e.target.value)}
+                >
+                  ${availableSplits.map(opt => html`
+                    <option value=${opt}>
+                      ${opt === 'client'
+                        ? 'Client account name'
+                        : opt === 'address_name'
+                          ? 'Sales order correspondence address - name'
+                          : 'Sales order correspondence address - email'}
+                    </option>
+                  `)}
+                </select>
+
+                <button
+                  type="button"
+                  class=${"px-4 py-2 rounded-xl text-white " +
+                          (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
+                  disabled=${downloadingSplit}
+                  aria-busy=${downloadingSplit}
+                  onClick=${downloadSplit}
+                >
+                  ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
+                </button>
+              </div>
+            `}
+          </div>
+
+          ${downloadingSplit && html`
+            <div class="w-full bg-slate-200 rounded h-2 overflow-hidden mt-2">
+              <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
+            </div>
+          `}
+        </div>
+      `}
+
+      ${hasDownloadedResults && html`
+        <div class="mt-4 p-3 border rounded-xl bg-slate-50">
+          <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
+          <div class="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange=${e => setPoaSheetFile(e.target.files?.[0] || null)}
+              class="block text-sm"
+            />
+            <button
+              type="button"
+              class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled=${downloadingPoAsFromSheet || !poaSheetFile}
+              aria-busy=${downloadingPoAsFromSheet}
+              onClick=${downloadPoAsFromSheet}
+            >
+              ${downloadingPoAsFromSheet ? "Preparing…" : "Download PoAs from sheet"}
+            </button>
+          </div>
+          <p class="text-xs text-slate-600 mt-2">
+            Uses only OwnerN/OwnerNAddress columns in the uploaded workbook.
+            If an owner name appears with multiple addresses, separate PoAs are created (…(1), …(2)).
+          </p>
+        </div>
+      `}
+
+
 
       ${error && html`<div class="text-red-700">${error}</div>`}
 
@@ -624,8 +523,7 @@ function App() {
         </details>
       `}
     </div>
-  `;
-
+  </div>`;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
