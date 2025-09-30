@@ -376,7 +376,7 @@ function App() {
         }} />
       </div>
 
-      ${file && !confirmed && !epNeeded && html`
+      ${file && html`
         <div class="flex gap-3">
           <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
           <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
