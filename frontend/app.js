@@ -356,6 +356,7 @@ function App() {
       `}
 
       ${job && progress.done === progress.total && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
           <div class="flex items-center gap-3">
             <button
               type="button"
@@ -378,8 +379,8 @@ function App() {
                       ${opt === 'client'
                         ? 'Client account name'
                         : opt === 'address_name'
-                          ? 'Sales order correspondence address – name'
-                          : 'Sales order correspondence address – email'}
+                          ? 'Sales order correspondence address - name'
+                          : 'Sales order correspondence address - email'}
                     </option>
                   `)}
                 </select>
@@ -399,14 +400,13 @@ function App() {
           </div>
 
           ${downloadingSplit && html`
-            <div class="w-full bg-slate-200 rounded h-2 overflow-hidden">
+            <div class="w-full bg-slate-200 rounded h-2 overflow-hidden mt-2">
               <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
             </div>
           `}
         </div>
-
-
       `}
+
 
       ${error && html`<div class="text-red-700">${error}</div>`}
 
