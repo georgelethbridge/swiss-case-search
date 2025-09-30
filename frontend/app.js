@@ -32,7 +32,12 @@ function App() {
   const [downloadingSplit, setDownloadingSplit] = useState(false);
   const [splitProgress, setSplitProgress] = useState(0);
 
+  const [hasDownloadedResults, setHasDownloadedResults] = useState(false);
   const [downloadingPoAsOnly, setDownloadingPoAsOnly] = useState(false);
+
+  const [poaSheetFile, setPoaSheetFile] = useState(null);
+  const [downloadingPoAsFromSheet, setDownloadingPoAsFromSheet] = useState(false);
+
 
 
 
@@ -204,6 +209,7 @@ function App() {
     const a = document.createElement('a');
     a.href = url; a.download = `swissreg-results-${job.jobId}.xlsx`; a.click();
     URL.revokeObjectURL(url);
+    setHasDownloadedResults(true);
   }
 
   async function downloadSplit() {
@@ -282,6 +288,35 @@ function App() {
       setDownloadingPoAsOnly(false);
     }
   }
+
+  async function downloadPoAsFromSheet() {
+    if (!job || !poaSheetFile) return;
+    try {
+      setDownloadingPoAsFromSheet(true);
+      const fd = new FormData();
+      fd.append('file', poaSheetFile, poaSheetFile.name || 'results.xlsx');
+      const resp = await fetch(`${backend}/api/jobs/${job.jobId}/poas-from-sheet`, {
+        method: 'POST',
+        body: fd
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `Download failed (${resp.status})`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `poas-from-sheet-${job.jobId}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setDownloadingPoAsFromSheet(false);
+    }
+  }
+
 
 
 
@@ -447,6 +482,34 @@ function App() {
           `}
         </div>
       `}
+
+      ${hasDownloadedResults && html`
+        <div class="mt-4 p-3 border rounded-xl bg-slate-50">
+          <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
+          <div class="flex items-center gap-3">
+            <input
+              type="file"
+              accept=".xlsx"
+              onChange=${e => setPoaSheetFile(e.target.files?.[0] || null)}
+              class="block text-sm"
+            />
+            <button
+              type="button"
+              class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled=${downloadingPoAsFromSheet || !poaSheetFile}
+              aria-busy=${downloadingPoAsFromSheet}
+              onClick=${downloadPoAsFromSheet}
+            >
+              ${downloadingPoAsFromSheet ? "Preparing…" : "Download PoAs from sheet"}
+            </button>
+          </div>
+          <p class="text-xs text-slate-600 mt-2">
+            Uses only OwnerN/OwnerNAddress columns in the uploaded workbook.
+            If an owner name appears with multiple addresses, separate PoAs are created (…(1), …(2)).
+          </p>
+        </div>
+      `}
+
 
 
       ${error && html`<div class="text-red-700">${error}</div>`}
