@@ -395,13 +395,14 @@ function App() {
 
             <button
               type="button"
-              class={"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
-              disabled={downloadingPoAsOnly}
-              aria-busy={downloadingPoAsOnly}
-              onClick={downloadPoAsOnly}
+              class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled=${downloadingPoAsOnly}
+              aria-busy=${downloadingPoAsOnly}
+              onClick=${downloadPoAsOnly}
             >
-              {downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
+              ${downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
             </button>
+
 
 
             ${canSplit && html`
