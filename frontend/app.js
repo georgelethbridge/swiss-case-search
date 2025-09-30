@@ -32,6 +32,9 @@ function App() {
   const [downloadingSplit, setDownloadingSplit] = useState(false);
   const [splitProgress, setSplitProgress] = useState(0);
 
+  const [downloadingPoAsOnly, setDownloadingPoAsOnly] = useState(false);
+
+
 
   const inputRef = useRef(null);
 
@@ -255,6 +258,30 @@ function App() {
     }
   }
 
+  async function downloadPoAsOnly() {
+    if (!job) return;
+    try {
+      setDownloadingPoAsOnly(true);
+      const resp = await fetch(`${API_BASE}/api/jobs/${job.id}/download-poas-only`, { method: 'POST' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `Download failed with ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `poas-${job.id}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setDownloadingPoAsOnly(false);
+    }
+  }
+
+
 
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
@@ -365,6 +392,17 @@ function App() {
             >
               Download results
             </button>
+
+            <button
+              type="button"
+              class={"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled={downloadingPoAsOnly}
+              aria-busy={downloadingPoAsOnly}
+              onClick={downloadPoAsOnly}
+            >
+              {downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
+            </button>
+
 
             ${canSplit && html`
               <div class="flex items-center gap-2">
