@@ -351,7 +351,7 @@ function App() {
           <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
             <div class="bg-blue-600 h-3" style=${{ width: percent + '%' }}></div>
           </div>
-          <div class="mt-2 text-sm">${percent}%</div>
+          <div class="mt-2 text-sm">${percent + '%'}</div>
         </div>
       `}
 
