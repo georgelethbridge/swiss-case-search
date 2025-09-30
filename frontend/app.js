@@ -262,7 +262,9 @@ function App() {
     if (!job) return;
     try {
       setDownloadingPoAsOnly(true);
-      const resp = await fetch(`${API_BASE}/api/jobs/${job.id}/download-poas-only`, { method: 'POST' });
+      const resp = await fetch(`${backend}/api/jobs/${job.jobId}/download-poas-only`, {
+        method: 'POST'
+      });
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error || `Download failed with ${resp.status}`);
@@ -271,7 +273,7 @@ function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `poas-${job.id}.zip`;
+      a.download = `poas-${job.jobId}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
