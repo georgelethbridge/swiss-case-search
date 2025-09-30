@@ -584,31 +584,32 @@ function App() {
                     class="sr-only"
                     onChange=${e => {
                       const f = e.target.files?.[0];
-                      setReuploadFile(f || null);
+                      setPoaSheetFile(f || null);
                     }}
                   />
                   <span class="text-sm font-medium text-slate-700">📄 Choose .xlsx file</span>
                 </label>
 
-                ${reuploadFile && html`
+                ${poaSheetFile && html`
                   <span class="text-sm text-slate-500 truncate max-w-[320px] italic">
-                    ${reuploadFile.name}
+                    ${poaSheetFile.name}
                   </span>
                 `}
 
                 <button
                   type="button"
                   class=${"flex items-center gap-2 px-4 py-2 rounded-xl text-white font-medium " +
-                          (downloadingFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-800 hover:bg-slate-700")}
-                  disabled=${downloadingFromSheet || !reuploadFile}
-                  aria-busy=${downloadingFromSheet}
+                          (downloadingPoAsFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-800 hover:bg-slate-700")}
+                  disabled=${downloadingPoAsFromSheet || !poaSheetFile}
+                  aria-busy=${downloadingPoAsFromSheet}
                   onClick=${downloadPoAsFromSheet}
                 >
-                  ${downloadingFromSheet ? "⏳ Preparing PoAs…" : "📄 Download PoAs from sheet"}
+                  ${downloadingPoAsFromSheet ? "⏳ Preparing PoAs…" : "📄 Download PoAs from sheet"}
                 </button>
               </div>
             `
           })}
+
         </section>
       `}
 
