@@ -71,18 +71,26 @@ function App() {
     const sample = rows.slice(0, 200);
     for (const { h, score } of ordered) {
       if (score <= 0) break; // nothing convincing left
-      const hits = sample.reduce((n, r) => n + (normalizeEP(r[h]) ? 1 : 0), 0);
+      const hits = sample.reduce((n, r) => n + (normalizeEP(r[h], h) ? 1 : 0), 0);
+
       if (hits > 0) return h;
     }
     return '';
   }
 
   // Extract/normalize "EPNNNNNNN" even if there are spaces or kind codes (e.g. "EP 2305232 B1")
-  function normalizeEP(v) {
+  function normalizeEP(v, headerHint) {
     const s = String(v || '').toUpperCase();
-    const m = s.match(/\bEP\s*\d{7}\b/);      // find "EP 1234567" anywhere
-    if (!m) return '';
-    return m[0].replace(/\s+/g, '');         // "EP 1234567" -> "EP1234567"
+    // 1) EP with optional spaces between digits: "EP 1 234 567", "EP1234567", "EP 1234567 B1"
+    let m = s.match(/\bEP\s*\d(?:\s*\d){6}\b/);
+    if (m) return m[0].replace(/\s+/g, '').replace(/\b(EP\d{7}).*/, '$1');
+
+    // 2) If the header looks like a publication/patent/grant column, accept bare 7 digits (with or without spaces)
+    if (headerHint && /\b(patent|publication|grant)\b/i.test(String(headerHint))) {
+      const digits = s.replace(/\D/g, '');
+      if (digits.length === 7) return 'EP' + digits;
+    }
+    return '';
   }
 
 
@@ -104,7 +112,7 @@ function App() {
       const epCol = inferEpColumn(headers, rows);   // <-- pass rows too
       setEpColDetected(epCol);
 
-      const cnt = rows.reduce((n, r) => n + (normalizeEP(epCol ? r[epCol] : '') ? 1 : 0), 0);
+      const cnt = rows.reduce((n, r) => n + (normalizeEP(epCol ? r[epCol] : '', epCol) ? 1 : 0), 0);
       setCaseCount(cnt);
     } catch {
       setCaseCount(null);
