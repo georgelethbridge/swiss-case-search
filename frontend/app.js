@@ -336,7 +336,6 @@ function App() {
 
   return html`
     <div class="max-w-3xl mx-auto">
-      <!-- Header -->
       <div class="flex items-center justify-between mb-4">
         <h1 class="text-2xl font-bold">Swissreg Batch Tool</h1>
         <button
@@ -359,7 +358,6 @@ function App() {
 
       <div class="grid gap-4">
 
-        <!-- Primary dropzone -->
         <div
           class=${"p-6 rounded-2xl bg-white shadow text-center border-2 " + (dragOver ? "border-blue-500 bg-blue-50" : "border-dashed border-slate-300")}
           onDragOver=${(e)=>onDrag(e,true)}
@@ -400,7 +398,6 @@ function App() {
           }} />
         </div>
 
-        <!-- Confirm / Reset -->
         ${file && !confirmed && !epNeeded && html`
           <div class="flex gap-3">
             <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
@@ -411,7 +408,6 @@ function App() {
           </div>
         `}
 
-        <!-- Manual EP selection -->
         ${epNeeded && html`
           <div class="bg-white rounded-2xl p-4 shadow">
             <div class="font-semibold mb-2">Select the column that contains the EP publication number</div>
@@ -435,7 +431,6 @@ function App() {
           </div>
         `}
 
-        <!-- Job progress -->
         ${job && html`
           <div class="bg-white rounded-2xl p-4 shadow">
             <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
@@ -446,7 +441,6 @@ function App() {
           </div>
         `}
 
-        <!-- Completed actions - simplified button group (no extra card) -->
         ${job && progress.done === progress.total && html`
           <div class="flex flex-col gap-3">
             <div class="flex flex-wrap items-center gap-3">
@@ -509,7 +503,6 @@ function App() {
           </div>
         `}
 
-        <!-- Re-upload dropzone-style area -->
         ${hasDownloadedResults && html`
           <div class="p-6 rounded-2xl bg-white shadow text-left border-2 border-dashed border-slate-300">
             <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
