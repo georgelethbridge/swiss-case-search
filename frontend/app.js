@@ -364,7 +364,8 @@ function App() {
           onDragLeave=${(e)=>onDrag(e,false)}
           onDrop=${onDrop}
           onClick=${() => inputRef.current?.click()}
-          style="cursor:pointer"
+          style=${{ cursor: 'pointer' }}
+
         >
           ${file
             ? html`
