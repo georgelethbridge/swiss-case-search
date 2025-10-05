@@ -533,11 +533,7 @@ return html`
             >
               ${!poaSheetFile && html`
                 <div class="space-y-1 px-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-6 w-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-width="1.5" d="M12 16V4m0 0l-3.5 3.5M12 4l3.5 3.5M4 16.5a4.5 4.5 0 014.5-4.5h7a4.5 4.5 0 010 9h-9A4.5 4.5 0 014 16.5z"/>
-                  </svg>
-                  <p class="text-sm text-slate-700">Drop workbook or click</p>
-                  <p class="text-xs text-slate-400">Accepted: .xlsx</p>
+                  <p class="text-sm text-slate-700">Drag and drop spreadsheet here, or click to select</p>
                 </div>
               `}
 
