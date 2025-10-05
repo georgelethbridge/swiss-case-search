@@ -207,7 +207,10 @@ function App() {
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = `swissreg-results-${job.jobId}.xlsx`; a.click();
+    a.href = url;
+    const base = (job.originalName || 'results.xlsx').replace(/\.[^.]+$/, '');
+    a.download = `${base} [${job.jobId}].xlsx`;
+    a.click();
     URL.revokeObjectURL(url);
     setHasDownloadedResults(true);
   }
