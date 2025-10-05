@@ -55,6 +55,7 @@ function App() {
       let pts = 0;
       if (s.startsWith('ep')) pts += 5;
       if (/\bpublication\b/.test(s)) pts += 3;
+      if (/\bpatent\b/.test(s)) pts += 2;
       if (/\bgrant\b/.test(s)) pts += 2;
       if (/\b(number|no|no\.|#)\b/.test(s)) pts += 1;
       // if (/\bapplication\b/.test(s)) pts -= 4;   // <-- push "Application Number" down
