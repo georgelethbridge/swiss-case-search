@@ -1,20 +1,100 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Swissreg Batch</title>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style> 
-    .dropzone { border: 2px dashed #94a3b8; } 
-    .drag-over { outline: 2px solid #3b82f6; background: #eff6ff; } </style>
-</head>
-<body class="bg-slate-50 text-slate-900">
-  <div id="root" class="min-h-screen p-6"></div>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script type="module" src="./app.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Swissreg Batch Tool</title>
+
+    <!-- React + HTM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/htm@3.1.1/dist/htm.umd.js"></script>
+
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- (optional) icon UMD kept since you had it before -->
+    <script src="https://cdn.jsdelivr.net/npm/lucide-react@latest/dist/umd/lucide-react.min.js"></script>
+
+    <style>
+      /* keep the nice button feel */
+      button { transition: all 0.2s ease; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+      /* “card” look without @apply */
+      .card {
+        background-color: #ffffff;           /* bg-white */
+        padding: 1.25rem;                    /* p-5 */
+        border-radius: 1rem;                /* rounded-2xl */
+        box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05); /* shadow-sm */
+        border: 1px solid #e2e8f0;          /* border-slate-200 */
+      }
+
+      /* primary / secondary styles without @apply */
+      .btn-primary {
+        background-color: #16a34a;   /* green-600 */
+        color: #ffffff;
+        font-weight: 500;            /* font-medium */
+        border-radius: 0.5rem;       /* rounded-lg */
+        padding: 0.5rem 1.25rem;     /* py-2 px-5 */
+      }
+      .btn-primary:hover { background-color: #15803d; } /* green-700 */
+
+      .btn-secondary {
+        background-color: #1f2937;   /* slate-800 */
+        color: #ffffff;
+        font-weight: 500;
+        border-radius: 0.5rem;
+        padding: 0.5rem 1.25rem;
+      }
+      .btn-secondary:hover { background-color: #111827; } /* slate-900 */
+
+      /* dropzone base + drag-over states */
+      .dropzone {
+        display: flex; align-items: center; justify-content: center; flex-direction: column;
+        cursor: pointer;
+        border: 2px dashed #94a3b8; /* slate-400 */
+        border-radius: 1rem;        /* rounded-2xl */
+        padding: 1.5rem;            /* p-6 */
+        text-align: center;
+        background: #ffffff;        /* bg-white */
+        transition: border-color 0.2s ease, background-color 0.2s ease;
+      }
+      .dropzone:hover { border-color: #475569; } /* hover:border-slate-600 */
+
+      .drag-over {
+        border-color: #3b82f6;      /* blue-500 */
+        background-color: #eff6ff;  /* blue-50 */
+      }
+    </style>
+  </head>
+
+  <body class="bg-slate-50 text-slate-900 font-sans">
+    <div id="root" class="min-h-screen p-6 max-w-3xl mx-auto">
+      <header class="flex items-center justify-between mb-6">
+        <h1 class="text-2xl font-semibold tracking-tight">Swissreg Batch Tool</h1>
+
+        <!-- Visible Show debugging button with icon -->
+        <button id="debugToggle"
+          class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-100 transition">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          Show debugging
+        </button>
+      </header>
+
+      <!-- React app mounts here - leave as-is so app.js controls UI -->
+      <div id="appContainer"></div>
+
+      <footer class="mt-10 text-center text-xs text-slate-400"></footer>
+    </div>
+
+    <!-- SheetJS -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <!-- Your app -->
+    <script type="module" src="./app.js"></script>
+  </body>
 </html>
