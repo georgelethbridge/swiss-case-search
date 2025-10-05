@@ -515,14 +515,15 @@ return html`
       `}
 
       ${hasDownloadedResults && html`
-        <section class="bg-white rounded-2xl p-4 shadow">
-          <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
+        <section class="bg-white rounded-2xl p-5 shadow border border-slate-200">
+          <div class="font-medium mb-3">Re-upload edited results to generate PoAs (sheet-only)</div>
 
-          <div class="grid grid-cols-1 md:grid-cols-[auto,1fr] gap-5 md:items-stretch">
+          <div class="grid gap-6 md:grid-cols-[280px,1fr] md:items-center">
             <div
               class=${[
-                'h-40 w-full md:w-72 rounded-xl border-2 border-dashed flex items-center justify-center text-center transition cursor-pointer select-none',
-                poaDrag ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-500/50' : 'border-slate-300 hover:border-slate-400 bg-white'
+                'relative h-44 w-full rounded-xl border-2 border-dashed flex items-center justify-center text-center',
+                'transition cursor-pointer select-none bg-white',
+                poaDrag ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-500/40' : 'border-slate-300 hover:border-slate-400'
               ].join(' ')}
               onDragEnter=${(e)=>onPoaDrag(e,true)}
               onDragOver=${(e)=>onPoaDrag(e,true)}
@@ -530,13 +531,31 @@ return html`
               onDrop=${onPoaDrop}
               onClick=${() => poaInputRef.current?.click()}
             >
-              <div class="space-y-1">
-                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-6 w-6 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                  <path stroke-width="1.5" d="M12 16V4m0 0l-3.5 3.5M12 4l3.5 3.5M4 16.5a4.5 4.5 0 014.5-4.5h7a4.5 4.5 0 010 9h-9A4.5 4.5 0 014 16.5z"/>
-                </svg>
-                <p class="text-sm text-slate-700">Drop workbook or click</p>
-                <p class="text-xs text-slate-400">Accepted: .xlsx</p>
-              </div>
+              ${!poaSheetFile && html`
+                <div class="space-y-1 px-4">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-6 w-6 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-width="1.5" d="M12 16V4m0 0l-3.5 3.5M12 4l3.5 3.5M4 16.5a4.5 4.5 0 014.5-4.5h7a4.5 4.5 0 010 9h-9A4.5 4.5 0 014 16.5z"/>
+                  </svg>
+                  <p class="text-sm text-slate-700">Drop workbook or click</p>
+                  <p class="text-xs text-slate-400">Accepted: .xlsx</p>
+                </div>
+              `}
+
+              ${poaSheetFile && html`
+                <div class="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                  <div class="inline-flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-1.5 border border-emerald-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <span class="text-xs font-medium text-emerald-700 truncate max-w-[14rem]">${poaSheetFile.name}</span>
+                  </div>
+                  <button
+                    type="button"
+                    class="text-xs text-slate-500 hover:text-slate-700 underline"
+                    onClick=${() => setPoaSheetFile(null)}
+                  >Choose a different file</button>
+                </div>
+              `}
 
               <input
                 ref=${poaInputRef}
@@ -548,40 +567,49 @@ return html`
               />
             </div>
 
-            <div class="flex flex-col justify-between">
+            <div class="flex flex-col gap-4">
               <div class="space-y-2">
                 <p class="text-sm text-slate-700">
-                  Upload an edited workbook from the results above. If an owner name appears with multiple addresses, separate PoAs are created (...(1), ...(2)).
+                  Upload an edited workbook from the results above. If an owner name appears with multiple addresses,
+                  separate PoAs are created (...(1), ...(2)).
                 </p>
-
-                ${poaSheetFile && html`
-                  <div class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                      <path stroke-width="1.5" d="M4 7a2 2 0 012-2h7.5L20 11.5V19a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/><path stroke-width="1.5" d="M13 5v4a2 2 0 002 2h4"/>
-                    </svg>
-                    <span class="text-xs font-medium text-slate-700 truncate max-w-[28ch]">${poaSheetFile.name}</span>
-                    <button class="text-xs text-slate-500 hover:text-slate-700" onClick=${() => setPoaSheetFile(null)}>Clear</button>
-                  </div>
-                `}
+                <ul class="text-xs text-slate-500 space-y-1">
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[2px] h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                    Headers must be <span class="font-medium text-slate-700 ml-1">OwnerN</span> and <span class="font-medium text-slate-700 ml-1">OwnerNAddress</span>
+                  </li>
+                  <li class="flex items-start gap-2">
+                    <span class="mt-[2px] h-1.5 w-1.5 rounded-full bg-slate-400"></span>
+                    Only the first sheet is read
+                  </li>
+                </ul>
               </div>
 
-              <div class="mt-4 flex items-center gap-3">
+              <div class="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsFromSheet || !poaSheetFile ? "bg-slate-400 cursor-not-allowed" : "bg-slate-700 hover:bg-slate-800")}
+                  class=${[
+                    'px-4 py-2 rounded-xl font-medium transition',
+                    poaSheetFile && !downloadingPoAsFromSheet
+                      ? 'bg-slate-900 text-white hover:bg-slate-800'
+                      : 'bg-slate-200 text-slate-500 cursor-not-allowed'
+                  ].join(' ')}
                   disabled=${downloadingPoAsFromSheet || !poaSheetFile}
                   aria-busy=${downloadingPoAsFromSheet}
                   onClick=${downloadPoAsFromSheet}
                 >
-                  ${downloadingPoAsFromSheet ? "Preparing…" : "Download PoAs from sheet"}
+                  ${downloadingPoAsFromSheet ? 'Preparing…' : 'Download PoAs from sheet'}
                 </button>
 
-                <span class="text-xs text-slate-500">Headers must be OwnerN and OwnerNAddress</span>
+                ${poaSheetFile && html`
+                  <span class="text-xs text-slate-500">Ready to generate PoAs</span>
+                `}
               </div>
             </div>
           </div>
         </section>
       `}
+
 
       ${error && html`<div class="text-red-700">${error}</div>`}
 
