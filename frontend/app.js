@@ -334,227 +334,267 @@ function App() {
 
   const percent = progress.total ? Math.floor((progress.done / progress.total) * 100) : 0;
 
-  return html`
-    <div class="max-w-3xl mx-auto">
-      <div class="flex items-center justify-between mb-4">
-        <h1 class="text-2xl font-bold">Swissreg Batch Tool</h1>
-        <button
-          class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-100 transition"
-          onClick=${() => setShowDebug(s => !s)}
-          aria-label="Toggle debugging"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          ${showDebug ? 'Hide debugging' : 'Show debugging'}
-        </button>
+  const [poaDrag, setPoaDrag] = React.useState(false);
+  const poaInputRef = React.useRef(null);
+
+  const onPoaDrag = (e, isOver) => { e.preventDefault(); e.stopPropagation(); setPoaDrag(isOver); };
+  const onPoaDrop = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    setPoaDrag(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) setPoaSheetFile(f);
+  };
+
+
+return html`
+  <div class="max-w-3xl mx-auto">
+    <div class="flex items-center justify-between mb-4">
+      <h1 class="text-2xl font-bold">Swissreg Batch Tool</h1>
+      <button
+        class="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg border border-slate-300 hover:bg-slate-100 transition"
+        onClick=${() => setShowDebug(s => !s)}
+        aria-label="Toggle debugging"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        ${showDebug ? 'Hide debugging' : 'Show debugging'}
+      </button>
+    </div>
+
+    <p class="mb-3 text-sm">
+      Upload an Excel (.xlsx) file with European Patent publication numbers. This tool will query Swissreg
+      and append results to your sheet. When complete, download the results or split per client.
+    </p>
+
+    <div class="grid gap-4">
+      <div
+        class=${"p-6 rounded-2xl bg-white shadow text-center border-2 " + (dragOver ? "border-blue-500 bg-blue-50" : "border-dashed border-slate-300")}
+        onDragOver=${(e)=>onDrag(e,true)}
+        onDragLeave=${(e)=>onDrag(e,false)}
+        onDrop=${onDrop}
+        onClick=${() => inputRef.current?.click()}
+        style=${{ cursor: 'pointer' }}
+      >
+        ${file
+          ? html`
+              <div class="flex flex-col items-center gap-1">
+                <div>
+                  <strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB
+                </div>
+                ${caseCount !== null && html`
+                  <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full inline-flex gap-1">
+                    <span>${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected</span>
+                    ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : null}
+                  </div>
+                `}
+              </div>
+            `
+          : html`<div class="text-slate-600">Drag and drop spreadsheet here, or click to select</div>`
+        }
+
+        <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
+          const f = e.target.files[0];
+          setFile(f || null);
+          setPendingFile(f || null);
+          if (f) precountCases(f);
+          setError('');
+          setJob(null);
+          setConfirmed(false);
+          setEpNeeded(false);
+          setEpOptions([]);
+          setEpChoice('');
+          setDebugInfo(null);
+        }} />
       </div>
 
-      <p class="mb-3 text-sm">
-        Upload an Excel (.xlsx) file with European Patent publication numbers. This tool will query Swissreg
-        and append results to your sheet. When complete, download the results or split per client.
-      </p>
-
-      <div class="grid gap-4">
-
-        <div
-          class=${"p-6 rounded-2xl bg-white shadow text-center border-2 " + (dragOver ? "border-blue-500 bg-blue-50" : "border-dashed border-slate-300")}
-          onDragOver=${(e)=>onDrag(e,true)}
-          onDragLeave=${(e)=>onDrag(e,false)}
-          onDrop=${onDrop}
-          onClick=${() => inputRef.current?.click()}
-          style=${{ cursor: 'pointer' }}
-
-        >
-          ${file
-            ? html`
-                <div class="flex flex-col items-center gap-1">
-                  <div>
-                    <strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB
-                  </div>
-                  ${caseCount !== null && html`
-                    <div class="text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full inline-flex gap-1">
-                      <span>${caseCount} ${caseCount === 1 ? 'case' : 'cases'} detected</span>
-                      ${epColDetected ? html`<span class="text-slate-500">(column: ${epColDetected})</span>` : null}
-                    </div>
-                  `}
-                </div>
-              `
-            : html`<div class="text-slate-600">Drag and drop spreadsheet here, or click to select</div>`
-          }
-
-          <input type="file" accept=".xlsx" hidden ref=${inputRef} onChange=${e=> {
-            const f = e.target.files[0];
-            setFile(f || null);
-            setPendingFile(f || null);
-            if (f) precountCases(f);
-            setError('');
-            setJob(null);
-            setConfirmed(false);
-            setEpNeeded(false);
-            setEpOptions([]);
-            setEpChoice('');
-            setDebugInfo(null);
-          }} />
+      ${file && !confirmed && !epNeeded && html`
+        <div class="flex gap-3">
+          <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
+          <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
+            setFile(null); setPendingFile(null); setError(''); setJob(null); setConfirmed(false);
+            setEpNeeded(false); setEpOptions([]); setEpChoice(''); setDebugInfo(null);
+          }}>Reset</button>
         </div>
+      `}
 
-        ${file && !confirmed && !epNeeded && html`
-          <div class="flex gap-3">
-            <button class="px-4 py-2 rounded-xl bg-blue-600 text-white" onClick=${() => startJob()}>Confirm and start</button>
+      ${epNeeded && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="font-semibold mb-2">Select the column that contains the EP publication number</div>
+          <div class="text-xs text-slate-600 mb-3">
+            We could not auto-detect the EP column. Choose it below and click Continue.
+          </div>
+          <div class="flex flex-wrap gap-3 items-center">
+            <select class="border rounded px-2 py-1" value=${epChoice} onChange=${e => setEpChoice(e.target.value)}>
+              <option value="">-- Select column --</option>
+              ${epOptions.map(h => html`<option value=${h}>${h}</option>`)}
+            </select>
+            <button
+              class=${"px-4 py-2 rounded-xl text-white " + (epChoice ? "bg-blue-600" : "bg-blue-300 cursor-not-allowed")}
+              disabled=${!epChoice}
+              onClick=${continueAfterChoosingEp}
+            >Continue</button>
             <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
-              setFile(null); setPendingFile(null); setError(''); setJob(null); setConfirmed(false);
-              setEpNeeded(false); setEpOptions([]); setEpChoice(''); setDebugInfo(null);
-            }}>Reset</button>
+              setEpNeeded(false); setEpOptions([]); setEpChoice('');
+            }}>Cancel</button>
           </div>
-        `}
+        </div>
+      `}
 
-        ${epNeeded && html`
-          <div class="bg-white rounded-2xl p-4 shadow">
-            <div class="font-semibold mb-2">Select the column that contains the EP publication number</div>
-            <div class="text-xs text-slate-600 mb-3">
-              We could not auto-detect the EP column. Choose it below and click Continue.
-            </div>
-            <div class="flex flex-wrap gap-3 items-center">
-              <select class="border rounded px-2 py-1" value=${epChoice} onChange=${e => setEpChoice(e.target.value)}>
-                <option value="">-- Select column --</option>
-                ${epOptions.map(h => html`<option value=${h}>${h}</option>`)}
-              </select>
-              <button
-                class=${"px-4 py-2 rounded-xl text-white " + (epChoice ? "bg-blue-600" : "bg-blue-300 cursor-not-allowed")}
-                disabled=${!epChoice}
-                onClick=${continueAfterChoosingEp}
-              >Continue</button>
-              <button class="px-4 py-2 rounded-xl bg-slate-200" onClick=${() => {
-                setEpNeeded(false); setEpOptions([]); setEpChoice('');
-              }}>Cancel</button>
-            </div>
+      ${job && html`
+        <div class="bg-white rounded-2xl p-4 shadow">
+          <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
+          <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
+            <div class="bg-blue-600 h-3" style=${{ width: percent + '%' }}></div>
           </div>
-        `}
+          <div class="mt-2 text-sm">${percent + '%'}</div>
+        </div>
+      `}
 
-        ${job && html`
-          <div class="bg-white rounded-2xl p-4 shadow">
-            <div class="mb-2 text-sm">Job ${job.jobId} - ${progress.done}/${progress.total}</div>
-            <div class="w-full bg-slate-200 rounded h-3 overflow-hidden">
-              <div class="bg-blue-600 h-3" style=${{ width: percent + '%' }}></div>
-            </div>
-            <div class="mt-2 text-sm">${percent + '%'}</div>
-          </div>
-        `}
+      ${job && progress.done === progress.total && html`
+        <div class="flex flex-col gap-3">
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
+              onClick=${downloadResults}
+            >
+              Download results
+            </button>
 
-        ${job && progress.done === progress.total && html`
-          <div class="flex flex-col gap-3">
-            <div class="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                class="px-4 py-2 rounded-xl bg-emerald-600 text-white"
-                onClick=${downloadResults}
-              >
-                Download results
-              </button>
+            <button
+              type="button"
+              class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
+              disabled=${downloadingPoAsOnly}
+              aria-busy=${downloadingPoAsOnly}
+              onClick=${downloadPoAsOnly}
+            >
+              ${downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
+            </button>
 
-              <button
-                type="button"
-                class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsOnly ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
-                disabled=${downloadingPoAsOnly}
-                aria-busy=${downloadingPoAsOnly}
-                onClick=${downloadPoAsOnly}
-              >
-                ${downloadingPoAsOnly ? "Preparing PoAs…" : "Download PoAs only"}
-              </button>
+            ${canSplit && html`
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-slate-700">Split by:</label>
+                <select
+                  class="border rounded px-2 py-1"
+                  value=${splitBy}
+                  onChange=${e => setSplitBy(e.target.value)}
+                >
+                  ${availableSplits.map(opt => html`
+                    <option value=${opt}>
+                      ${opt === 'client'
+                        ? 'Client account name'
+                        : opt === 'address_name'
+                          ? 'Sales order correspondence address - name'
+                          : 'Sales order correspondence address - email'}
+                    </option>
+                  `)}
+                </select>
 
-              ${canSplit && html`
-                <div class="flex items-center gap-2">
-                  <label class="text-sm text-slate-700">Split by:</label>
-                  <select
-                    class="border rounded px-2 py-1"
-                    value=${splitBy}
-                    onChange=${e => setSplitBy(e.target.value)}
-                  >
-                    ${availableSplits.map(opt => html`
-                      <option value=${opt}>
-                        ${opt === 'client'
-                          ? 'Client account name'
-                          : opt === 'address_name'
-                            ? 'Sales order correspondence address - name'
-                            : 'Sales order correspondence address - email'}
-                      </option>
-                    `)}
-                  </select>
-
-                  <button
-                    type="button"
-                    class=${"px-4 py-2 rounded-xl text-white " +
-                            (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
-                    disabled=${downloadingSplit}
-                    aria-busy=${downloadingSplit}
-                    onClick=${downloadSplit}
-                  >
-                    ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
-                  </button>
-                </div>
-              `}
-            </div>
-
-            ${downloadingSplit && html`
-              <div class="w-full bg-slate-200 rounded h-2 overflow-hidden">
-                <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
+                <button
+                  type="button"
+                  class=${"px-4 py-2 rounded-xl text-white " +
+                          (downloadingSplit ? "bg-indigo-400 cursor-wait" : "bg-indigo-600")}
+                  disabled=${downloadingSplit}
+                  aria-busy=${downloadingSplit}
+                  onClick=${downloadSplit}
+                >
+                  ${downloadingSplit ? `Preparing… ${splitProgress}%` : 'Download split files'}
+                </button>
               </div>
             `}
           </div>
-        `}
 
-        ${hasDownloadedResults && html`
-          <div class="p-6 rounded-2xl bg-white shadow text-left border-2 border-dashed border-slate-300">
-            <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
+          ${downloadingSplit && html`
+            <div class="w-full bg-slate-200 rounded h-2 overflow-hidden">
+              <div class="bg-indigo-600 h-2" style=${{ width: `${splitProgress}%` }}></div>
+            </div>
+          `}
+        </div>
+      `}
 
-            <div class="flex flex-wrap items-center gap-3">
+      ${hasDownloadedResults && html`
+        <section class="bg-white rounded-2xl p-4 shadow">
+          <div class="font-medium mb-2">Re-upload edited results to generate PoAs (sheet-only)</div>
+
+          <div class="grid grid-cols-1 md:grid-cols-[auto,1fr] gap-5 md:items-stretch">
+            <div
+              class=${[
+                'h-40 w-full md:w-72 rounded-xl border-2 border-dashed flex items-center justify-center text-center transition cursor-pointer select-none',
+                poaDrag ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-500/50' : 'border-slate-300 hover:border-slate-400 bg-white'
+              ].join(' ')}
+              onDragEnter=${(e)=>onPoaDrag(e,true)}
+              onDragOver=${(e)=>onPoaDrag(e,true)}
+              onDragLeave=${(e)=>onPoaDrag(e,false)}
+              onDrop=${onPoaDrop}
+              onClick=${() => poaInputRef.current?.click()}
+            >
+              <div class="space-y-1">
+                <svg xmlns="http://www.w3.org/2000/svg" class="mx-auto h-6 w-6 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                  <path stroke-width="1.5" d="M12 16V4m0 0l-3.5 3.5M12 4l3.5 3.5M4 16.5a4.5 4.5 0 014.5-4.5h7a4.5 4.5 0 010 9h-9A4.5 4.5 0 014 16.5z"/>
+                </svg>
+                <p class="text-sm text-slate-700">Drop workbook or click</p>
+                <p class="text-xs text-slate-400">Accepted: .xlsx</p>
+              </div>
+
               <input
+                ref=${poaInputRef}
                 id="poaSheetInput"
                 type="file"
                 accept=".xlsx"
-                onChange=${e => setPoaSheetFile(e.target.files?.[0] || null)}
                 class="hidden"
+                onChange=${e => setPoaSheetFile(e.target.files?.[0] || null)}
               />
-              <label
-                for="poaSheetInput"
-                class="cursor-pointer inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 text-white hover:bg-slate-900 transition"
-              >
-                Choose file
-              </label>
-              ${poaSheetFile && html`
-                <span class="text-sm text-slate-700 truncate max-w-[16rem]">${poaSheetFile.name}</span>
-              `}
-              <button
-                type="button"
-                class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsFromSheet ? "bg-slate-400 cursor-wait" : "bg-slate-700")}
-                disabled=${downloadingPoAsFromSheet || !poaSheetFile}
-                aria-busy=${downloadingPoAsFromSheet}
-                onClick=${downloadPoAsFromSheet}
-              >
-                ${downloadingPoAsFromSheet ? "Preparing…" : "Download PoAs from sheet"}
-              </button>
             </div>
 
-            <p class="text-xs text-slate-600 mt-2">
-              Uses only OwnerN/OwnerNAddress columns in the uploaded workbook.
-              If an owner name appears with multiple addresses, separate PoAs are created (...(1), ...(2)).
-            </p>
+            <div class="flex flex-col justify-between">
+              <div class="space-y-2">
+                <p class="text-sm text-slate-700">
+                  Upload an edited workbook from the results above. If an owner name appears with multiple addresses, separate PoAs are created (...(1), ...(2)).
+                </p>
+
+                ${poaSheetFile && html`
+                  <div class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                      <path stroke-width="1.5" d="M4 7a2 2 0 012-2h7.5L20 11.5V19a2 2 0 01-2 2H6a2 2 0 01-2-2V7z"/><path stroke-width="1.5" d="M13 5v4a2 2 0 002 2h4"/>
+                    </svg>
+                    <span class="text-xs font-medium text-slate-700 truncate max-w-[28ch]">${poaSheetFile.name}</span>
+                    <button class="text-xs text-slate-500 hover:text-slate-700" onClick=${() => setPoaSheetFile(null)}>Clear</button>
+                  </div>
+                `}
+              </div>
+
+              <div class="mt-4 flex items-center gap-3">
+                <button
+                  type="button"
+                  class=${"px-4 py-2 rounded-xl text-white " + (downloadingPoAsFromSheet || !poaSheetFile ? "bg-slate-400 cursor-not-allowed" : "bg-slate-700 hover:bg-slate-800")}
+                  disabled=${downloadingPoAsFromSheet || !poaSheetFile}
+                  aria-busy=${downloadingPoAsFromSheet}
+                  onClick=${downloadPoAsFromSheet}
+                >
+                  ${downloadingPoAsFromSheet ? "Preparing…" : "Download PoAs from sheet"}
+                </button>
+
+                <span class="text-xs text-slate-500">Headers must be OwnerN and OwnerNAddress</span>
+              </div>
+            </div>
           </div>
-        `}
+        </section>
+      `}
 
-        ${error && html`<div class="text-red-700">${error}</div>`}
+      ${error && html`<div class="text-red-700">${error}</div>`}
 
-        ${showDebug && debugInfo && html`
-          <details class="mt-6 bg-gray-100 p-4 rounded-xl" open>
-            <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
-            <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${
-              JSON.stringify(debugInfo.results?.[0]?._debug ?? debugInfo, null, 2)
-            }</pre>
-          </details>
-        `}
-      </div>
-    </div>`;
+      ${showDebug && debugInfo && html`
+        <details class="mt-6 bg-gray-100 p-4 rounded-xl" open>
+          <summary class="cursor-pointer font-semibold">Debug (request & response)</summary>
+          <pre class="mt-2 text-xs whitespace-pre-wrap overflow-x-auto">${
+            JSON.stringify(debugInfo.results?.[0]?._debug ?? debugInfo, null, 2)
+          }</pre>
+        </details>
+      `}
+    </div>
+  </div>`;
 
 }
 
