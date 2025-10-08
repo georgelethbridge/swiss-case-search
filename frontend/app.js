@@ -708,30 +708,67 @@ function GeneratePoAs() {
   async function handleGeneratePoAs() {
     try {
       setLoading(true); setError('');
-      const payload = {
-        mode: poaType,         // 'general' or 'specific'
-        owners,                // editable owners with name, address, patents
-      };
+
+      // If Specific PoAs, regroup from the latest edits to avoid stale groupings
+      const finalOwners = (poaType === 'specific')
+        ? regroupFromOwners(owners)
+        : owners;
+
+      if (poaType === 'specific') setGroups(finalOwners); // keep UI in sync
+
+      const payload = { mode: poaType, owners: finalOwners };
       const r = await fetch(`${backend}/api/ipo/generate-poas`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!r.ok) {
-        const j = await r.json().catch(()=> ({}));
+        const j = await r.json().catch(() => ({}));
         throw new Error(j.error || 'Generation failed');
       }
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
-      a.href = url; a.download = `poas.zip`; a.click();
+      a.href = url; a.download = 'poas.zip'; a.click();
       URL.revokeObjectURL(url);
-    } catch(e) {
+    } catch (e) {
       setError(e.message || String(e));
     } finally {
       setLoading(false);
     }
   }
+
+
+  function canon(s) {
+    return String(s || '')
+      .normalize('NFKC')         // fold accents/width
+      .replace(/\s+/g, ' ')      // collapse whitespace
+      .trim()
+      .toLowerCase();
+  }
+
+  function regroupFromOwners(list) {
+    const m = new Map(); // key -> { ownerName, ownerAddress, patents[] }
+    for (const o of list || []) {
+      const name = String(o.ownerName || '').trim();
+      const addr = String(o.ownerAddress || '').trim();
+      if (!name || !addr) continue; // skip incomplete rows the user is still editing
+      const key = `${canon(name)}||${canon(addr)}`;
+      if (!m.has(key)) m.set(key, { ownerName: name, ownerAddress: addr, patents: [] });
+      const dst = m.get(key);
+      if (Array.isArray(o.patents)) {
+        for (const p of o.patents) if (p) dst.patents.push(String(p).trim());
+      }
+    }
+    // dedupe patents within each group
+    for (const g of m.values()) g.patents = [...new Set(g.patents)];
+    return [...m.values()];
+  }
+
+  function refreshGrouping() {
+    setGroups(regroupFromOwners(owners));
+  }
+
 
   return html`
     <div class="grid gap-4">
@@ -827,9 +864,19 @@ function GeneratePoAs() {
           </div>
         </div>
 
-        <button class="btn-primary" disabled=${loading} onClick=${handleGeneratePoAs}>
-          Generate PoAs
-        </button>
+        <div class="flex gap-2">
+          <button class="btn-secondary" disabled=${owners.length === 0 || loading}
+                  onClick=${refreshGrouping}>
+            Refresh grouping
+          </button>
+          <button class="btn-primary" disabled=${owners.length === 0 || loading}
+                  onClick=${handleGeneratePoAs}>
+            Generate PoAs
+          </button>
+        </div>
+
+
+
       `}
 
       ${error && html`<div class="text-red-600">${error}</div>`}
