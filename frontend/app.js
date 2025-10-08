@@ -39,7 +39,7 @@ function App() {
   const [downloadingPoAsFromSheet, setDownloadingPoAsFromSheet] = useState(false);
 
 
-
+  
 
   const inputRef = useRef(null);
 
@@ -345,7 +345,6 @@ function App() {
     if (f) setPoaSheetFile(f);
   };
 
-
 return html`
   <div class="max-w-3xl mx-auto">
     <div class="flex items-center justify-between mb-4">
@@ -622,4 +621,239 @@ return html`
 
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+
+/* New GeneratePoAs component - trimmed for brevity, focuses on the flow */
+function GeneratePoAs() {
+  const [file, setFile] = React.useState(null);
+  const [dragOver, setDragOver] = React.useState(false);
+  const inputRef = React.useRef(null);
+  const [poaType, setPoaType] = React.useState('general'); // 'general' | 'specific'
+  const [scope, setScope] = React.useState('all'); // 'all' | 'active' | 'specific'
+  const [detectedPatents, setDetectedPatents] = React.useState([]); // [{patent, row}]
+  const [specificSelection, setSpecificSelection] = React.useState({}); // {EP1234567:true}
+  const [owners, setOwners] = React.useState([]); // [{ownerName, ownerAddress, patents:[]}] - editable
+  const [groups, setGroups] = React.useState([]); // [{ownerName, ownerAddress, patents:[]}]
+  const [error, setError] = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const backend = 'https://swissreg-batch.onrender.com'; // reuse
+
+  function onDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) { setFile(f); parsePreview(f); }
+  }
+  function onDrag(e, over) { e.preventDefault(); setDragOver(over); }
+
+  async function parsePreview(f) {
+    setError('');
+    const buf = await f.arrayBuffer();
+    let rows = [];
+    if (f.name.toLowerCase().endsWith('.csv')) {
+      // crude CSV parse via SheetJS for consistency
+      const wb = XLSX.read(buf, { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    } else {
+      const wb = XLSX.read(buf, { type: 'array' });
+      rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '' });
+    }
+
+    // Expect headings:
+    // "Application Number", "Patent Number", "Your Reference", "IPO Register Status", "IPO Recorded Representative"
+    const patents = [];
+    for (const r of rows) {
+      const pn = String(r['Patent Number'] || '').trim();
+      const status = String(r['IPO Register Status'] || '').trim();
+      patents.push({ patent: pn, status, row: r });
+    }
+    setDetectedPatents(patents.filter(p => p.patent));
+    // Prime specificSelection with all true by default
+    setSpecificSelection(Object.fromEntries(patents.map(p => [p.patent, true])));
+  }
+
+  function selectedPatentList() {
+    let list = detectedPatents;
+    if (scope === 'active') list = list.filter(p => p.status === 'Active');
+    if (scope === 'specific') list = list.filter(p => specificSelection[p.patent]);
+    return list.map(p => p.patent);
+  }
+
+  async function handleGenerateOwners() {
+    try {
+      setLoading(true); setError('');
+      const form = new FormData();
+      form.append('mode', poaType); // 'general' | 'specific'
+      form.append('scope', scope);
+      form.append('file', file);
+      // Optional explicit patent list for 'specific' or to be safe in all cases
+      form.append('selected', JSON.stringify(selectedPatentList()));
+      const r = await fetch(`${backend}/api/ipo/poa-prep`, { method: 'POST', body: form });
+      const j = await r.json().catch(()=> ({}));
+      if (!r.ok) throw new Error(j.error || 'Preparation failed');
+      // j.owners -> editable
+      // j.groups -> groupings
+      setOwners(j.owners || []);
+      setGroups(j.groups || []);
+    } catch(e) {
+      setError(e.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateOwner(idx, field, val) {
+    setOwners(arr => arr.map((o,i)=> i===idx ? { ...o, [field]: val } : o));
+  }
+
+  async function handleGeneratePoAs() {
+    try {
+      setLoading(true); setError('');
+      const payload = {
+        mode: poaType,         // 'general' or 'specific'
+        owners,                // editable owners with name, address, patents
+      };
+      const r = await fetch(`${backend}/api/ipo/generate-poas`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(()=> ({}));
+        throw new Error(j.error || 'Generation failed');
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `poas.zip`; a.click();
+      URL.revokeObjectURL(url);
+    } catch(e) {
+      setError(e.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return html`
+    <div class="grid gap-4">
+      <div class=${"dropzone " + (dragOver ? "drag-over" : "")}
+           onDragOver=${e=>onDrag(e,true)}
+           onDragLeave=${e=>onDrag(e,false)}
+           onDrop=${onDrop}
+           onClick=${() => inputRef.current?.click()}
+           style=${{ cursor: 'pointer' }}>
+        ${file ? html`<div><strong>${file.name}</strong> - ${(file.size/1024/1024).toFixed(2)} MB</div>`
+               : html`<div>Drag and drop CSV or XLSX here, or click</div>`}
+        <input ref=${inputRef} type="file" accept=".csv,.xlsx" hidden
+               onChange=${e => { const f = e.target.files?.[0]; if (f) { setFile(f); parsePreview(f); }}} />
+      </div>
+
+      <div class="card">
+        <div class="flex gap-6 items-center">
+          <label class="flex items-center gap-2">
+            <input type="radio" name="poaType" value="general" checked=${poaType==='general'} onChange=${()=>setPoaType('general')}/>
+            General PoA
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="radio" name="poaType" value="specific" checked=${poaType==='specific'} onChange=${()=>setPoaType('specific')}/>
+            Specific PoAs (grouped)
+          </label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flex gap-6 items-center">
+          <label class="flex items-center gap-2">
+            <input type="radio" name="scope" value="all" checked=${scope==='all'} onChange=${()=>setScope('all')}/>
+            All
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="radio" name="scope" value="active" checked=${scope==='active'} onChange=${()=>setScope('active')}/>
+            Active only
+          </label>
+          <label class="flex items-center gap-2">
+            <input type="radio" name="scope" value="specific" checked=${scope==='specific'} onChange=${()=>setScope('specific')}/>
+            Specific
+          </label>
+        </div>
+
+        ${scope==='specific' && html`
+          <div class="mt-3 max-h-64 overflow-auto border rounded-lg p-2">
+            ${detectedPatents.map(p => html`
+              <label class="block text-sm">
+                <input type="checkbox" checked=${!!specificSelection[p.patent]}
+                  onChange=${e=> setSpecificSelection(s => ({...s, [p.patent]: e.target.checked}))}/>
+                <span class="ml-1">${p.patent} ${p.status ? `- ${p.status}` : ''}</span>
+              </label>
+            `)}
+          </div>
+        `}
+      </div>
+
+      <div class="flex gap-2">
+        <button class="btn-secondary" disabled=${!file || loading} onClick=${handleGenerateOwners}>
+          Generate owner table
+        </button>
+      </div>
+
+      ${owners.length > 0 && html`
+        <div class="card">
+          <h3 class="font-semibold mb-2">Owners - editable</h3>
+          <div class="grid gap-2">
+            ${owners.map((o, idx) => html`
+              <div class="border rounded p-2">
+                <div class="flex gap-2">
+                  <input class="border rounded px-2 py-1 w-1/3" value=${o.ownerName}
+                         onChange=${e=>updateOwner(idx,'ownerName',e.target.value)} />
+                  <input class="border rounded px-2 py-1 w-2/3" value=${o.ownerAddress}
+                         onChange=${e=>updateOwner(idx,'ownerAddress',e.target.value)} />
+                </div>
+                ${poaType==='specific' && o.patents?.length
+                  ? html`<div class="text-xs text-slate-500 mt-1">Patents: ${o.patents.join(', ')}</div>`
+                  : null}
+              </div>
+            `)}
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="font-semibold mb-2">Groupings by owner</h3>
+          <div class="text-sm">
+            ${groups.map(g => html`
+              <div class="mb-2">
+                <div><strong>${g.ownerName}</strong> - ${g.ownerAddress}</div>
+                <div class="text-xs text-slate-500">Patents: ${g.patents.join(', ')}</div>
+              </div>
+            `)}
+          </div>
+        </div>
+
+        <button class="btn-primary" disabled=${loading} onClick=${handleGeneratePoAs}>
+          Generate PoAs
+        </button>
+      `}
+
+      ${error && html`<div class="text-red-600">${error}</div>`}
+    </div>
+  `;
+}
+
+// Tiny tab state at top-level
+function Tabs() {
+  const [tab, setTab] = React.useState('source'); // 'source' | 'poa'
+  return html`
+    <div class="mb-4 flex gap-2">
+      <button class=${"px-3 py-1.5 rounded-lg border " + (tab==='source'?"bg-slate-900 text-white":"bg-white")}
+        onClick=${()=>setTab('source')}>Source information</button>
+      <button class=${"px-3 py-1.5 rounded-lg border " + (tab==='poa'?"bg-slate-900 text-white":"bg-white")}
+        onClick=${()=>setTab('poa')}>Generate PoAs</button>
+    </div>
+
+    ${tab === 'source'
+      ? html`<${App} />`
+      : html`<${GeneratePoAs} />`
+    }
+  `;
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${Tabs} />`);
